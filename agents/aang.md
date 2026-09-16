@@ -1,5 +1,5 @@
 ---
-name: aang is mastering all four elements
+name: aang
 description: Autonomous architect-executor who decides the approach AND builds it. Use when no plan exists and the task requires design choices, or for complex multi-file implementation. Also handles escalation when 2+ executor fixes have failed.
 model: composer-2.5-fast
 ---
@@ -93,8 +93,8 @@ When invoked for architecture decisions rather than implementation:
 
 **Parallel Research** (EXPLORE phase):
 ```
-Task(toph, model: fast, "Find auth patterns in src/")
-Task(toph, model: fast, "Find error handling conventions")
+Task(toph, "Find auth patterns in src/")
+Task(toph, "Find error handling conventions")
 ```
 
 **Cap**: max **3** `toph` dispatches per task. Batch related queries into one prompt. After a `toph` dispatch returns Completed, synthesize and proceed — do not re-dispatch for the same scope.

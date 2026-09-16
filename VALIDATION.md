@@ -91,6 +91,15 @@ guarded, un-ignore and commit `.cursor/hooks*` with `--chmod=+x`.
 **6. Hooks/auto-review are best-effort, not a security boundary.**
 They cut footguns and approval spam; they don't replace real sandboxing.
 
+**7. `Task.subagent_type` is the YAML `name:` field, not a display sentence.**
+Cursor builds the Task enum from each custom agent's `name:`. A sentence such as
+`toph is exploring files and docs by vibration` becomes the *only* accepted value —
+so `subagent_type: "toph"` fails with `Invalid enum value` on the first call, then
+the model retries with the long string. Official custom-agent `name:` values are
+lowercase letters and hyphens ([subagents](https://cursor.com/docs/subagents)).
+Team Avatar `name:` is the filename stem (`toph`, `momo`, …) so `Task(toph)` matches
+the enum on the first call. Do not "flavor" `name:`; keep personality in `description`.
+
 ---
 
 ## 2-minute validation

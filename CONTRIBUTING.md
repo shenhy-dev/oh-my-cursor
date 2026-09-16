@@ -9,7 +9,7 @@ Thanks for your interest in contributing. This project is a set of Cursor agent 
 
 ## Before you submit
 
-1. **Agents & rules:** Keep agent manifests (in `agents/`) and the orchestrator rule (in `rules/`) consistent with the existing style and structure. One role per agent; the orchestrator stays the single always-on rule.
+1. **Agents & rules:** Keep agent manifests (in `agents/`) and the orchestrator rule (in `rules/`) consistent with the existing style and structure. One role per agent; the orchestrator stays the single always-on rule. YAML `name:` **must** be the filename stem (`toph`, not a sentence). Cursor's Task enum is that `name:` value; a flavorful sentence makes `Task(toph)` fail on the first call. Keep personality in `description`.
 2. **Install script:** If you change file names or layout, update `install.sh` so install (including `--user` / `--project`) still works.
 3. **Docs:** Update README (or other docs) if you add agents, change behavior, or change how people install or use the project.
 

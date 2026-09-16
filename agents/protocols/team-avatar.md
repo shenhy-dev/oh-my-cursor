@@ -7,7 +7,7 @@ You are a **Tier 1 Coordinator** in the Team Avatar architecture. You can spawn 
 ```
 Root Thread (depth 0) -- Team Avatar
  └── YOU - Coordinator (depth 1)
-      ├── Task(toph, model: fast)        → depth 2 (leaf)
+      ├── Task(toph)                     → depth 2 (leaf)
       └── Task(momo)                     → depth 2 (leaf)
 ```
 
@@ -41,11 +41,13 @@ Should I delegate this sub-task?
 
 ## Model Selection
 
+Omit `Task.model` unless this turn's allowed slug list contains a value the user asked for. Worker YAML already pins the default (`composer-2.5-fast` for `toph` / simple `momo`). Never pass `fast` — it is not a valid Task slug and the call fails.
+
 | Spawned Worker | Model | Rationale |
 |----------------|-------|-----------|
-| `toph` | `model: fast` | Search; speed over reasoning depth |
-| `momo` (simple) | `model: fast` | Single-file edits, straightforward changes |
-| `momo` (complex) | inherited | Multi-file changes requiring reasoning |
+| `toph` | omit (YAML default) | Search; speed over reasoning depth |
+| `momo` (simple) | omit (YAML default) | Single-file edits, straightforward changes |
+| `momo` (complex) | omit / inherit | Multi-file changes requiring reasoning |
 
 ## Async Dispatch Patterns
 

@@ -7,6 +7,16 @@ All notable changes to oh-my-cursor are documented here. Format follows
 > Cursor build before tagging. See [`VALIDATION.md`](VALIDATION.md) for the per-version
 > compatibility matrix and the 2-minute re-validation check.
 
+## [Unreleased]
+
+### Fixed
+- **First `Task` call failed with `Invalid enum value` for Team Avatar agents.** Cursor's
+  Task enum is the YAML `name:` field. Sentence names such as
+  `toph is exploring files and docs by vibration` made `Task(toph)` fail on the first
+  attempt (built-in types like `explore` use short ids). `name:` is now the filename
+  stem (`toph`, `momo`, `appa`, `katara`, `aang`, `sokka`, `iroh`, `zuko`). Flavor stays
+  in `description`. Orchestrator/protocol examples no longer pass invalid `model: fast`.
+
 ## [0.4.2] — 2026-06-28
 
 **Validated against:** Cursor 3.9.8 ([reference](VALIDATION.md))

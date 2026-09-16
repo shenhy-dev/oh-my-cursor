@@ -362,7 +362,7 @@ Coordinated, tiered orchestration. The orchestrator auto-detects which agents to
 Activated via `/cactus-juice`. Trades depth for massive parallelism:
 
 1. Root decomposes your request into 5–10 **independent micro-tasks** (single-file scope)
-2. Up to **10 subagents spawn simultaneously** using `model: fast`
+2. Up to **10 subagents spawn simultaneously** (omit `Task.model`; workers use their YAML default)
 3. Workers write **low cognitive complexity** code
 4. Root collects results, verifies consistency, fixes integration issues
 
@@ -501,6 +501,10 @@ Or use slash commands: `/plan add OAuth support with JWT tokens` then `/build ba
 **Custom skills:** Create a `SKILL.md` directory under `.cursor/skills/` (project) or `~/.cursor/skills/` (user). Cursor auto-discovers it.
 
 ## FAQ
+
+### Why does the first subagent call fail with `Invalid enum value`?
+
+Cursor validates `Task.subagent_type` against each custom agent's YAML `name:` field (see [subagents](https://cursor.com/docs/subagents): lowercase letters and hyphens). If `name:` is a full sentence, `toph` is rejected and the model retries with the sentence — that looks like "the first spawn always fails." Team Avatar `name:` is the nickname (`toph`, `momo`, …) so `Task(toph)` matches on the first call. Re-run install with `--force` after pulling this change, then start a **new** chat (the enum is captured at session start).
 
 ### Do I need to manually choose agents?
 

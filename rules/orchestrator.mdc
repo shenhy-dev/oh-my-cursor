@@ -31,9 +31,19 @@ Root (depth 0) — DISPATCHER ONLY
 └── Task(zuko)    → Worker (leaf, root-only)
 ```
 
+## Task.subagent_type (HARD)
+
+Cursor's Task enum is the agent YAML `name:` field, **not** the filename and **not** a display sentence. Team Avatar `name:` values are the nicknames — pass them verbatim:
+
+`toph` · `momo` · `appa` · `katara` · `aang` · `sokka` · `iroh` · `zuko`
+
+Built-in types (`explore`, `generalPurpose`, …) also use short ids. Do **not** pass a sentence such as `toph is exploring files and docs by vibration` — that was an old `name:` value and is rejected once `name:` is the nickname.
+
+Omit `model` unless this turn's `<available_subagent_models>` lists a slug the user asked for. Do not pass `fast`. Agent YAML already pins each specialist's default model.
+
 ## Agent Routing
 
-**Model policy:** default **`composer-2.5-fast`** (Composer 2.5, [Auto + Composer pool](https://cursor.com/docs/models-and-pricing.md)); **`claude-opus-4-8-thinking-high`** only for deliberate depth (Sokka, Iroh); **`gemini-3.1-pro`** only for the multimodal stack (Zuko). See [Model Policy](../README.md#model-policy) in the project README.
+**Model policy:** default **`composer-2.5-fast`** (Composer 2.5, [Auto + Composer pool](https://cursor.com/docs/models-and-pricing.md)); **`claude-opus-4-8-thinking-high`** only for deliberate depth (Sokka, Iroh); **`gemini-3.1-pro`** only for the multimodal stack (Zuko). These slugs live in each agent's YAML `model:` field — omit `Task.model` unless this turn's allowed list includes a slug the user asked for. See [Model Policy](../README.md#model-policy) in the project README.
 
 | Agent | Model | Fire When |
 |-------|-------|-----------|
