@@ -21,6 +21,9 @@ All notable changes to oh-my-cursor are documented here. Format follows
   repo. Upgrades remove leftover v0.4 injection files so the orchestrator is not loaded twice.
   Project-scope (`--project`) still writes `./.cursor/` for cloud agents, git `pre-commit`,
   and `permissions.json`. Commands now have `name`/`description` frontmatter.
+  Hook commands explicitly invoke `bash` (plugin `hooks/hooks.json`, project
+  `.cursor/hooks.json`, git pre-commit, and `guard-shell.sh` → `pre-commit-check.sh`)
+  so they run without relying on shebang or the executable bit.
 
 ### Fixed
 - **First `Task` call failed with `Invalid enum value` for Team Avatar agents.** Cursor's

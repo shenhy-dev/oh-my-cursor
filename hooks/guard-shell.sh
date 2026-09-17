@@ -100,8 +100,8 @@ esac
 # --- Commit anti-pattern guard ---
 case "$COMMAND" in
   *"git commit"*)
-    if [ -x "$HERE/pre-commit-check.sh" ]; then
-      if ! OUT="$("$HERE/pre-commit-check.sh" 2>&1)"; then
+    if [ -f "$HERE/pre-commit-check.sh" ]; then
+      if ! OUT="$(bash "$HERE/pre-commit-check.sh" 2>&1)"; then
         decide "commit contains forbidden anti-patterns ($(printf '%s' "$OUT" | tr '\n' ' ' | cut -c1-160))"
       fi
     fi

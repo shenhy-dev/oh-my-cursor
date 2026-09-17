@@ -544,10 +544,10 @@ function Write-ProjectHooksJson {
   "version": 1,
   "hooks": {
     "beforeShellExecution": [
-      { "command": ".cursor/hooks/guard-shell.sh", "failClosed": true }
+      { "command": "bash .cursor/hooks/guard-shell.sh", "failClosed": true }
     ],
     "afterFileEdit": [
-      { "command": ".cursor/hooks/post-edit-lint.sh" }
+      { "command": "bash .cursor/hooks/post-edit-lint.sh" }
     ]
   }
 }
@@ -688,7 +688,7 @@ function Install-GitPreCommitHook {
 # (shell, git CLI, or Cursor's native git path). The beforeShellExecution guard only sees shell
 # `git commit`; this git-native hook covers commits that bypass the shell.
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-exec "$root/.cursor/hooks/pre-commit-check.sh"
+exec bash "$root/.cursor/hooks/pre-commit-check.sh"
 '@
     [IO.File]::WriteAllText($hook, ($body -replace "`r`n", "`n"))
     Write-Host "  [installed] git pre-commit hook ($hook)" -ForegroundColor Green
