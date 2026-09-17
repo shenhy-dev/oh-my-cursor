@@ -432,7 +432,8 @@ Cursor's [hooks](https://cursor.com/docs/hooks) system. The plugin ships
 can run the same guards.
 
 Each hook is a script that receives a JSON payload on stdin and (for `beforeShellExecution`)
-returns an allow/deny/ask decision.
+returns an allow/deny/ask decision. Commands are invoked as `bash <script>` so they do not
+depend on the shebang or the executable bit.
 
 > **User-scope hooks** come with the plugin (`install.sh`, default). **Project / cloud-agent
 > hooks** still need **`install.sh --project`** inside the repo. After a project install,
