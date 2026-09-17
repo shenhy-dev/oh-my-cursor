@@ -1,3 +1,8 @@
+---
+name: plan
+description: Full planning pipeline via Sokka — ambiguity analysis, plan creation, and self-review
+---
+
 Analyze the following request using Sokka (the strategist agent) for the full planning pipeline:
 
 1. **Ambiguity Analysis**: Classify the intent type (refactoring, build, mid-sized, architecture, research). Identify hidden requirements, AI failure points, and scope boundaries.

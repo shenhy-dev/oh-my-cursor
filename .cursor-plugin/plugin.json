@@ -1,0 +1,30 @@
+{
+  "name": "oh-my-cursor",
+  "displayName": "Team Avatar",
+  "version": "0.5.0",
+  "description": "Team Avatar: Multi-agent orchestration for Cursor with ATLA-themed agents, slash commands, hooks, and tiered model routing.",
+  "author": {
+    "name": "ZeroClickDev"
+  },
+  "homepage": "https://github.com/tmcfarlane/oh-my-cursor",
+  "repository": "https://github.com/tmcfarlane/oh-my-cursor",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "orchestration",
+    "team-avatar",
+    "hooks",
+    "skills",
+    "subagents"
+  ],
+  "agents": [
+    "agents/aang.md",
+    "agents/sokka.md",
+    "agents/katara.md",
+    "agents/zuko.md",
+    "agents/toph.md",
+    "agents/appa.md",
+    "agents/momo.md",
+    "agents/iroh.md"
+  ]
+}

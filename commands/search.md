@@ -1,3 +1,8 @@
+---
+name: search
+description: Multi-angle codebase and docs exploration via Toph
+---
+
 Use Toph (the search specialist agent) for multi-angle exploration.
 
 Search the codebase AND external documentation in parallel:

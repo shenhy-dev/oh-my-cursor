@@ -1,3 +1,8 @@
+---
+name: cactus-juice
+description: Swarm mode — decompose into micro-tasks and spawn up to 10 parallel workers
+---
+
 CACTUS JUICE MODE -- "It's the quenchiest!"
 
 Switch to Agent Swarm mode. Trade depth for massive parallelism.

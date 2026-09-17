@@ -16,7 +16,7 @@
 </div>
 
 **An Avatar-themed AI dev team for Cursor.** 8 specialist agents, real per-model routing,<br>
-and hooks that block bad commits — pure config files, no runtime, no wrapper CLI.<br>
+and hooks that block bad commits — a Cursor plugin, no runtime, no wrapper CLI.<br>
 _Created by <a href="https://zeroclickdev.ai/">ZeroClickDev</a>_
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -26,10 +26,15 @@ _Created by <a href="https://zeroclickdev.ai/">ZeroClickDev</a>_
 
 </div>
 
+> **v0.5.0 — Cursor Plugin** (September 2026): Team Avatar ships as a [Cursor Plugin](https://cursor.com/docs/plugins)
+> (`~/.cursor/plugins/local/oh-my-cursor`) instead of scattering files into `~/.cursor/rules` and
+> `~/.cursor/hooks`. Re-run the installer to migrate; leftover v0.4 injection files are removed.
+> See [`CHANGELOG`](CHANGELOG.md).
+>
 > **v0.4.1 — Hardening** (June 28, 2026, validated on **Cursor 3.9.8**: 13/15 → 15/15): a git
 > `pre-commit` backstop catches `as any`/`@ts-ignore` commits even when the agent commits via
 > Cursor's **native git path** (which bypasses the shell hook), and credential-file reads
-> (`~/.ssh`, `~/.aws`, `*.pem`, …) are now **held** deterministically. See [`CHANGELOG`](CHANGELOG.md).
+> (`~/.ssh`, `~/.aws`, `*.pem`, …) are now **held** deterministically.
 >
 > **v0.4.0 — Enforcement + Automation** (June 26, 2026, validated live on Cursor 3.8.23):
 > [hooks](#hooks-cursor-agent-loop) that **block** an agent's destructive commands and
@@ -236,6 +241,13 @@ Coordinator-spawned workers may use Cursor’s `fast` tier or inherit the coordi
 
 **Requirements:** [Cursor](https://www.cursor.com/) **3.4+** with agent mode (subagents). No external runtime.
 
+Two ways to install the same plugin:
+
+1. **One-liner** (below) copies the plugin into `~/.cursor/plugins/local/oh-my-cursor`.
+2. **Customize → From GitHub Repository** and paste `https://github.com/tmcfarlane/oh-my-cursor` (the repo includes `.cursor-plugin/marketplace.json`).
+
+Then **Developer: Reload Window** (or restart Cursor) and open **Customize** to confirm rules, agents, commands, hooks, and skills are listed.
+
 ### macOS / Linux
 
 ```bash
@@ -289,15 +301,15 @@ git clone https://github.com/tmcfarlane/oh-my-cursor.git && cd oh-my-cursor
 
 ### What Gets Installed
 
-| Scope              | Agents                 | Rules                 | Commands                 | Hooks                 | Skills              |
-| ------------------ | ---------------------- | --------------------- | ------------------------ | --------------------- | ------------------- |
-| `--user` (default) | `~/.cursor/agents/`    | `~/.cursor/rules/`    | `~/.cursor/commands/`    | `~/.cursor/hooks/`    | `~/.cursor/skills/` |
-| `--project`        | `./.cursor/agents/`    | `./.cursor/rules/`    | `./.cursor/commands/`    | `./.cursor/hooks/`    | `./.cursor/skills/` |
-| `--claude`         | Also `.claude/agents/` | Also `.claude/rules/` | Also `.claude/commands/` | Also `.claude/hooks/` | —                   |
-| `--codex`          | Also `.codex/agents/`  | Also `.codex/rules/`  | Also `.codex/commands/`  | Also `.codex/hooks/`  | —                   |
-| `--no-skills`      | ✓                      | ✓                     | ✓                        | ✓                     | Skipped             |
+| Scope              | Destination | What lands there |
+| ------------------ | ----------- | ---------------- |
+| `--user` (default) | `~/.cursor/plugins/local/oh-my-cursor/` | Cursor Plugin: `.cursor-plugin/plugin.json`, agents, rules, commands, `hooks/hooks.json`, skills |
+| `--project`        | `./.cursor/` | Project files for this repo and cloud agents: agents, rules, commands, hook scripts, `.cursor/hooks.json`, `permissions.json` |
+| `--claude`         | `.claude/`  | File copy for Claude Code compatibility |
+| `--codex`          | `.codex/`   | File copy for Codex compatibility |
+| `--no-skills`      | (same)      | Everything except bundled skills |
 
-> **First-time rule activation:** Cursor may require you to approve the orchestrator rule. Open `~/.cursor/rules/orchestrator.mdc` and click **"Always Allow"** when prompted (one-time step).
+> **Upgrading from v0.4:** User-scope install no longer writes `~/.cursor/rules` or `~/.cursor/hooks`. The installer removes those leftover injection files so the orchestrator is not loaded twice.
 
 > **Upgrading from v0.1:** The installer auto-removes old agent files (hephaestus, prometheus, atlas, etc.).
 
@@ -414,14 +426,19 @@ Two-tier swarm: **Coordinators** (Aang, Sokka, Katara, Appa) spawn **Workers** (
 ## Hooks (Cursor agent-loop)
 
 System-level enforcement that doesn't rely on agents remembering to verify. Wired through
-Cursor's [hooks](https://cursor.com/docs/hooks) system via **`.cursor/hooks.json`** — each
-hook is a script that receives a JSON payload on stdin and (for `beforeShellExecution`)
-returns an allow/deny/ask decision.
+Cursor's [hooks](https://cursor.com/docs/hooks) system. The plugin ships
+**`hooks/hooks.json`** (paths relative to the plugin root). A project-scope install writes
+**`.cursor/hooks.json`** with workspace-relative paths so [cloud agents](https://cursor.com/docs/hooks)
+can run the same guards.
 
-> **Hooks are project-scoped.** Install them with **`install.sh --project`** inside a repo;
-> hook command paths are relative to the workspace root, so a user-scope (`~/.cursor`) install
-> deliberately skips the hook config. After installing, **fully restart Cursor (Cmd+Q)** —
-> a window reload is not enough to register project hooks — and ensure the workspace is trusted.
+Each hook is a script that receives a JSON payload on stdin and (for `beforeShellExecution`)
+returns an allow/deny/ask decision. Commands are invoked as `bash <script>` so they do not
+depend on the shebang or the executable bit.
+
+> **User-scope hooks** come with the plugin (`install.sh`, default). **Project / cloud-agent
+> hooks** still need **`install.sh --project`** inside the repo. After a project install,
+> **fully restart Cursor (Cmd+Q)** — a window reload is not enough to register project hooks —
+> and ensure the workspace is trusted.
 
 | Hook handler          | Event                  | Purpose                                                                         |
 | --------------------- | ---------------------- | ------------------------------------------------------------------------------- |
@@ -498,7 +515,7 @@ Or use slash commands: `/plan add OAuth support with JWT tokens` then `/build ba
 
 </details>
 
-**Custom skills:** Create a `SKILL.md` directory under `.cursor/skills/` (project) or `~/.cursor/skills/` (user). Cursor auto-discovers it.
+**Custom skills:** Create a `SKILL.md` directory under `.cursor/skills/` (project), `~/.cursor/skills/` (user), or inside an installed plugin's `skills/` folder. Cursor auto-discovers it.
 
 ## FAQ
 
@@ -532,7 +549,7 @@ Upgraded to Cursor Ultra with 9 days left to burn ~$300 in tokens. Built agent s
 
 ## Inspiration
 
-Adapted from **[oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)** (32k+ stars) — agent specialization, parallel dispatch, phased orchestration — applied to Cursor's native `Task` subagents. No plugin system, no wrapper CLI.
+Adapted from **[oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)** (32k+ stars) — agent specialization, parallel dispatch, phased orchestration — applied to Cursor's native `Task` subagents and packaged as a Cursor plugin. No wrapper CLI.
 
 ## Star History
 
@@ -542,7 +559,7 @@ Adapted from **[oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)*
 
 Contributions that improve clarity, behavior, or docs are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-**Local development:** Clone the repo and run `bash install.sh` (macOS/Linux) or `.\install.ps1` (Windows) to install from source. Changes to agents, rules, commands, or hooks take effect after reinstalling.
+**Local development:** Clone the repo and run `bash install.sh` (macOS/Linux) or `.\install.ps1` (Windows) to copy the plugin into `~/.cursor/plugins/local/oh-my-cursor`. Changes to agents, rules, commands, or hooks take effect after reinstalling and reloading the Cursor window. Do not symlink the repo into `plugins/local` — Cursor skips symlinks that point outside that folder.
 
 ## Security
 

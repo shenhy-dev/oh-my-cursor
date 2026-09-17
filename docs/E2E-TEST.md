@@ -61,9 +61,12 @@ Report:
       newer (e.g. **3.9.x**) the suites **are** the re-validation: Suite A catches model-slug
       changes, Suite B catches hook-schema changes. A newer version is **not** a precondition
       failure — proceed and let the suites tell you whether the new build broke anything.
-- [ ] oh-my-cursor installed **project-scoped** in this repo: `.cursor/agents/*.md`,
-      `.cursor/rules/orchestrator.mdc`, `.cursor/hooks.json`, `.cursor/hooks/*.sh`,
-      `.cursor/permissions.json` (or repo-root `permissions.json`) all present.
+- [ ] oh-my-cursor is installed for this test in **one** of these ways:
+      **project-scoped** in this repo (`.cursor/agents/*.md`, `.cursor/rules/orchestrator.mdc`,
+      `.cursor/hooks.json`, `.cursor/hooks/*.sh`, `.cursor/permissions.json`) via
+      `bash install.sh --project`, **or** the Cursor plugin is loaded
+      (`~/.cursor/plugins/local/oh-my-cursor` or Customize → oh-my-cursor) **and** project
+      hooks/`permissions.json` are present if you are running Suite B/C.
 - [ ] **Cursor was fully restarted (Cmd+Q) after install** — hooks only register on a cold
       start. You **cannot** confirm registration *before* running a command, so a missing
       `.cursor/hooks/last-invocation.log` is **not** a precondition failure — Suite B is the
@@ -286,8 +289,8 @@ rm -f .cursor/hooks/last-invocation.log
   Most likely: Cursor wasn't cold-restarted after install, the hook is user-scoped instead of
   project-scoped, or `python3`/`jq` aren't on the GUI app's PATH (the guard has a perl
   fallback, but verify `.cursor/hooks/last-invocation.log` shows invocations).
-- **The `as any` commit landed** → `pre-commit-check.sh` isn't executable, or the guard's
-  `git commit` branch didn't run; confirm `chmod +x .cursor/hooks/*.sh`.
+- **The `as any` commit landed** → the guard's `git commit` branch didn't run, or `bash`
+  isn't on the hook PATH; confirm `.cursor/hooks.json` uses `bash .cursor/hooks/...`.
 - **A risky call auto-ran with no prompt** → auto-review isn't reading `permissions.json`;
   re-check Settings → Agents → Approvals & Execution and that the file is at the path Cursor
   expects for this scope.

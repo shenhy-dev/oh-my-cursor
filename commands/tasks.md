@@ -1,3 +1,8 @@
+---
+name: tasks
+description: Systematic task-list execution via Appa, with optional parallel Momo workers
+---
+
 Use Appa (the systematic executor agent) to work through this task list.
 
 1. Parse the tasks and their dependencies.

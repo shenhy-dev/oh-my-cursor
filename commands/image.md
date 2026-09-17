@@ -1,3 +1,8 @@
+---
+name: image
+description: Image generation and visual assets via Zuko and the cursor-image-generation skill
+---
+
 Use **Zuko** (the visual specialist agent) with the **cursor-image-generation** skill for this task.
 
 1. **Read** the **cursor-image-generation** skill (`skills/cursor-image-generation/SKILL.md`) and follow its workflow: **expand a rough user brief into a full prompt** before calling **GenerateImage** (layered prompts, iteration).
