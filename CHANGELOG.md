@@ -9,6 +9,19 @@ All notable changes to oh-my-cursor are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-17
+
+**Distribution change:** Cursor Plugin (`~/.cursor/plugins/local/oh-my-cursor`)
+
+### Added
+- **Cursor Plugin packaging.** Team Avatar is a Cursor plugin (`.cursor-plugin/plugin.json` +
+  `.cursor-plugin/marketplace.json`) instead of injecting files into `~/.cursor/rules` and
+  `~/.cursor/hooks`. User-scope install copies the plugin to
+  `~/.cursor/plugins/local/oh-my-cursor`. GitHub import via Customize works from the same
+  repo. Upgrades remove leftover v0.4 injection files so the orchestrator is not loaded twice.
+  Project-scope (`--project`) still writes `./.cursor/` for cloud agents, git `pre-commit`,
+  and `permissions.json`. Commands now have `name`/`description` frontmatter.
+
 ### Fixed
 - **First `Task` call failed with `Invalid enum value` for Team Avatar agents.** Cursor's
   Task enum is the YAML `name:` field. Sentence names such as
@@ -114,6 +127,7 @@ Validated model refresh for the current Cursor roster, verified live on **Cursor
 - Removed `is_background` from Toph for reliable output handoff.
 - 8 agents, 9 slash commands, orchestrator rule, hooks, and bundled skills.
 
+[0.5.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.3.0
 [0.2.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.2.0

@@ -1,0 +1,17 @@
+{
+  "name": "oh-my-cursor",
+  "owner": {
+    "name": "ZeroClickDev"
+  },
+  "metadata": {
+    "description": "Team Avatar: multi-agent orchestration for Cursor",
+    "version": "0.5.0"
+  },
+  "plugins": [
+    {
+      "name": "oh-my-cursor",
+      "source": ".",
+      "description": "Team Avatar: ATLA-themed agents, slash commands, hooks, and tiered model routing"
+    }
+  ]
+}

@@ -4,11 +4,11 @@
     oh-my-cursor installer for Windows.
 
 .DESCRIPTION
-    Install Team Avatar agent configurations for Cursor on Windows.
+    Install Team Avatar as a Cursor plugin (rules, agents, commands, hooks, skills).
     PowerShell equivalent of install.sh.
 
 .PARAMETER Scope
-    Install scope: 'user' (default, ~/.cursor/) or 'project' (./.cursor/).
+    Install scope: 'user' (default, ~/.cursor/plugins/local/oh-my-cursor) or 'project' (./.cursor/).
 
 .PARAMETER Force
     Overwrite existing files.
@@ -20,7 +20,7 @@
     Enable verbose output.
 
 .PARAMETER Uninstall
-    Remove installed agent and rule files.
+    Remove the plugin and leftover v0.4 injection files.
 
 .PARAMETER Disable
     Disable orchestration (rename rule so Cursor stops applying it).
@@ -29,17 +29,17 @@
     Re-enable orchestration (rename rule back).
 
 .PARAMETER AlsoClaude
-    Also install to .claude/agents/ for Claude Code compatibility.
+    Also install to .claude/ for Claude Code compatibility.
 
 .PARAMETER AlsoCodex
-    Also install to .codex/agents/ for Codex compatibility.
+    Also install to .codex/ for Codex compatibility.
 
 .PARAMETER NoSkills
     Skip installing bundled agent skills (skills are installed by default).
 
 .EXAMPLE
     .\install.ps1
-    # Install to user scope (default)
+    # Install the Cursor plugin to user scope (default)
 
 .EXAMPLE
     .\install.ps1 -Scope project
@@ -55,7 +55,7 @@
 
 .EXAMPLE
     .\install.ps1 -Uninstall
-    # Remove all components
+    # Remove the plugin and leftover injection files
 
 .EXAMPLE
     irm https://raw.githubusercontent.com/tmcfarlane/oh-my-cursor/main/install.ps1 | iex
@@ -84,14 +84,16 @@ $ErrorActionPreference = 'Stop'
 # Constants
 # ---------------------------------------------------------------------------
 
-$VERSION = '0.4.2'
-$CURSOR_MODE_LABEL = 'Team Avatar (Cursor 3.4+)'
+$VERSION = '0.5.0'
+$CURSOR_MODE_LABEL = 'Team Avatar (Cursor Plugin)'
+$PLUGIN_NAME = 'oh-my-cursor'
 
 $AGENT_FILES = @('aang.md', 'sokka.md', 'katara.md', 'zuko.md', 'toph.md', 'appa.md', 'momo.md', 'iroh.md')
 $PROTOCOL_FILES = @('protocols/team-avatar.md')
 $COMMAND_FILES = @('plan.md', 'build.md', 'search.md', 'fix.md', 'tasks.md', 'scout.md', 'cactus-juice.md', 'doc.md', 'image.md')
-$HOOK_FILES = @('post-edit-lint.sh', 'pre-commit-check.sh', 'guard-shell.sh')
-$CONFIG_FILES = @('hooks.json', 'permissions.json')
+$HOOK_FILES = @('post-edit-lint.sh', 'pre-commit-check.sh', 'guard-shell.sh', 'hooks.json')
+$HOOK_SCRIPT_FILES = @('post-edit-lint.sh', 'pre-commit-check.sh', 'guard-shell.sh')
+$PLUGIN_MANIFEST_FILES = @('plugin.json', 'marketplace.json')
 $RULE_FILE = 'orchestrator.mdc'
 $RULE_FILE_DISABLED = 'orchestrator.mdc.disabled'
 $SKILL_DIRS = @(
@@ -123,6 +125,8 @@ $LEGACY_PROTOCOL_FILES = @('protocols/swarm-coordinator.md')
 $SOURCE_BASE_URL_DEFAULT = 'https://raw.githubusercontent.com/tmcfarlane/oh-my-cursor/main'
 $SourceBaseUrl = if ($env:OH_MY_CURSOR_SOURCE_BASE_URL) { $env:OH_MY_CURSOR_SOURCE_BASE_URL } else { $SOURCE_BASE_URL_DEFAULT }
 
+$script:RemovedCount = 0
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -146,6 +150,25 @@ function Get-ScriptDir {
     return $null
 }
 
+function Remove-PathIfPresent {
+    param(
+        [string]$Target,
+        [string]$Label,
+        [bool]$IsDryRun
+    )
+    if (Test-Path $Target) {
+        if ($IsDryRun) {
+            Write-Host "  [remove] ${Label}" -ForegroundColor Red
+        }
+        else {
+            Remove-Item $Target -Recurse -Force
+            Write-Host "  [removed] ${Label}" -ForegroundColor Red
+        }
+        return $true
+    }
+    return $false
+}
+
 # ---------------------------------------------------------------------------
 # Directory resolution
 # ---------------------------------------------------------------------------
@@ -155,19 +178,40 @@ function Resolve-InstallDirs {
 
     if ($InstallScope -eq 'user') {
         $cursorDir = Join-Path $HOME '.cursor'
-    }
-    else {
-        $cursorDir = Join-Path '.' '.cursor'
+        $pluginDir = Join-Path (Join-Path (Join-Path $cursorDir 'plugins') 'local') $PLUGIN_NAME
+        return @{
+            CursorDir   = $cursorDir
+            PluginDir   = $pluginDir
+            AgentsDir   = Join-Path $pluginDir 'agents'
+            RulesDir    = Join-Path $pluginDir 'rules'
+            CommandsDir = Join-Path $pluginDir 'commands'
+            HooksDir    = Join-Path $pluginDir 'hooks'
+            SkillsDir   = Join-Path $pluginDir 'skills'
+        }
     }
 
+    $cursorDir = Join-Path '.' '.cursor'
     return @{
         CursorDir   = $cursorDir
+        PluginDir   = $null
         AgentsDir   = Join-Path $cursorDir 'agents'
         RulesDir    = Join-Path $cursorDir 'rules'
         CommandsDir = Join-Path $cursorDir 'commands'
         HooksDir    = Join-Path $cursorDir 'hooks'
         SkillsDir   = Join-Path $cursorDir 'skills'
     }
+}
+
+function Get-OrchestratorRuleDirs {
+    param([hashtable]$Dirs)
+
+    if ($Scope -eq 'user') {
+        return @(
+            (Join-Path $Dirs.PluginDir 'rules')
+            (Join-Path (Join-Path $HOME '.cursor') 'rules')
+        )
+    }
+    return @($Dirs.RulesDir)
 }
 
 # ---------------------------------------------------------------------------
@@ -181,50 +225,51 @@ function Set-OrchestratorRule {
         [bool]$IsDryRun
     )
 
-    $rulePath = Join-Path $Dirs.RulesDir $RULE_FILE
-    $disabledPath = Join-Path $Dirs.RulesDir $RULE_FILE_DISABLED
-
     Write-Host "oh-my-cursor v${VERSION}" -ForegroundColor White
     Write-Host $CURSOR_MODE_LABEL -ForegroundColor DarkGray
     Write-Host ''
 
-    if ($DisableRule) {
-        if (Test-Path $rulePath) {
-            if ($IsDryRun) {
-                Write-Host "  [would disable] ${RULE_FILE} in $($Dirs.RulesDir)" -ForegroundColor Yellow
+    $found = $false
+    foreach ($rulesDir in (Get-OrchestratorRuleDirs -Dirs $Dirs)) {
+        $rulePath = Join-Path $rulesDir $RULE_FILE
+        $disabledPath = Join-Path $rulesDir $RULE_FILE_DISABLED
+        if (-not (Test-Path $rulePath) -and -not (Test-Path $disabledPath)) {
+            continue
+        }
+        $found = $true
+
+        if ($DisableRule) {
+            if (Test-Path $rulePath) {
+                if ($IsDryRun) {
+                    Write-Host "  [would disable] ${RULE_FILE} in ${rulesDir}" -ForegroundColor Yellow
+                }
+                else {
+                    Move-Item -Path $rulePath -Destination $disabledPath -Force
+                    Write-Host "  [disabled] ${rulePath} - orchestration off. Agents and commands still available." -ForegroundColor Green
+                }
             }
             else {
-                Move-Item -Path $rulePath -Destination $disabledPath -Force
-                Write-Host "  [disabled] ${RULE_FILE} - orchestration off. Agents and commands still available." -ForegroundColor Green
+                Write-Host "  Already disabled (${disabledPath})" -ForegroundColor DarkGray
             }
         }
         else {
             if (Test-Path $disabledPath) {
-                Write-Host "  Already disabled (${RULE_FILE_DISABLED} present)" -ForegroundColor DarkGray
+                if ($IsDryRun) {
+                    Write-Host "  [would enable] ${RULE_FILE} in ${rulesDir}" -ForegroundColor Yellow
+                }
+                else {
+                    Move-Item -Path $disabledPath -Destination $rulePath -Force
+                    Write-Host "  [enabled] ${rulePath} - Team Avatar orchestration on." -ForegroundColor Green
+                }
             }
             else {
-                Write-Host "  No rule file found at ${rulePath}" -ForegroundColor Yellow
+                Write-Host "  Already enabled (${rulePath})" -ForegroundColor DarkGray
             }
         }
     }
-    else {
-        if (Test-Path $disabledPath) {
-            if ($IsDryRun) {
-                Write-Host "  [would enable] ${RULE_FILE} in $($Dirs.RulesDir)" -ForegroundColor Yellow
-            }
-            else {
-                Move-Item -Path $disabledPath -Destination $rulePath -Force
-                Write-Host "  [enabled] ${RULE_FILE} - Team Avatar orchestration on." -ForegroundColor Green
-            }
-        }
-        else {
-            if (Test-Path $rulePath) {
-                Write-Host "  Already enabled (${RULE_FILE} present)" -ForegroundColor DarkGray
-            }
-            else {
-                Write-Host "  No disabled rule found at ${disabledPath}" -ForegroundColor Yellow
-            }
-        }
+
+    if (-not $found) {
+        Write-Host '  No orchestrator rule found. Install first, then retry -Disable/-Enable.' -ForegroundColor Yellow
     }
 
     Write-Host ''
@@ -243,41 +288,50 @@ function Copy-SourcesFromLocalRepo {
     if (-not (Test-Path (Join-Path $scriptDir 'rules'))) { return $false }
 
     try {
+        foreach ($name in @('agents', 'rules', 'commands', 'hooks', '.cursor-plugin')) {
+            $path = Join-Path $OutDir $name
+            if (-not (Test-Path $path)) { New-Item -ItemType Directory -Path $path -Force | Out-Null }
+        }
+
         foreach ($file in $AGENT_FILES) {
-            Copy-Item (Join-Path $scriptDir 'agents' $file) (Join-Path $OutDir $file) -Force
+            Copy-Item (Join-Path $scriptDir 'agents' $file) (Join-Path $OutDir 'agents' $file) -Force
         }
 
         foreach ($file in $PROTOCOL_FILES) {
-            $destSubDir = Join-Path $OutDir (Split-Path $file -Parent)
+            $destSubDir = Join-Path (Join-Path $OutDir 'agents') (Split-Path $file -Parent)
             if (-not (Test-Path $destSubDir)) { New-Item -ItemType Directory -Path $destSubDir -Force | Out-Null }
-            Copy-Item (Join-Path $scriptDir 'agents' $file) (Join-Path $OutDir $file) -Force
+            Copy-Item (Join-Path $scriptDir 'agents' $file) (Join-Path (Join-Path $OutDir 'agents') $file) -Force
         }
 
-        Copy-Item (Join-Path $scriptDir 'rules' $RULE_FILE) (Join-Path $OutDir $RULE_FILE) -Force
+        Copy-Item (Join-Path $scriptDir 'rules' $RULE_FILE) (Join-Path $OutDir 'rules' $RULE_FILE) -Force
 
         $cmdSrcDir = Join-Path $scriptDir 'commands'
         if (Test-Path $cmdSrcDir) {
-            $cmdOutDir = Join-Path $OutDir 'commands'
-            if (-not (Test-Path $cmdOutDir)) { New-Item -ItemType Directory -Path $cmdOutDir -Force | Out-Null }
             foreach ($file in $COMMAND_FILES) {
-                Copy-Item (Join-Path $cmdSrcDir $file) (Join-Path $cmdOutDir $file) -Force
+                Copy-Item (Join-Path $cmdSrcDir $file) (Join-Path $OutDir 'commands' $file) -Force
             }
         }
 
         $hooksSrcDir = Join-Path $scriptDir 'hooks'
         if (Test-Path $hooksSrcDir) {
-            $hooksOutDir = Join-Path $OutDir 'hooks'
-            if (-not (Test-Path $hooksOutDir)) { New-Item -ItemType Directory -Path $hooksOutDir -Force | Out-Null }
             foreach ($file in $HOOK_FILES) {
-                Copy-Item (Join-Path $hooksSrcDir $file) (Join-Path $hooksOutDir $file) -Force
+                Copy-Item (Join-Path $hooksSrcDir $file) (Join-Path $OutDir 'hooks' $file) -Force
             }
         }
 
-        foreach ($file in $CONFIG_FILES) {
-            $configSrc = Join-Path $scriptDir $file
-            if (Test-Path $configSrc) {
-                Copy-Item $configSrc (Join-Path $OutDir $file) -Force
+        $manifestSrcDir = Join-Path $scriptDir '.cursor-plugin'
+        if (Test-Path $manifestSrcDir) {
+            foreach ($file in $PLUGIN_MANIFEST_FILES) {
+                $src = Join-Path $manifestSrcDir $file
+                if (Test-Path $src) {
+                    Copy-Item $src (Join-Path $OutDir '.cursor-plugin' $file) -Force
+                }
             }
+        }
+
+        $permSrc = Join-Path $scriptDir 'permissions.json'
+        if (Test-Path $permSrc) {
+            Copy-Item $permSrc (Join-Path $OutDir 'permissions.json') -Force
         }
 
         $skillsSrcDir = Join-Path $scriptDir 'skills'
@@ -297,39 +351,43 @@ function Get-SourcesFromGitHub {
 
     try {
         foreach ($file in $AGENT_FILES) {
-            $url = "${SourceBaseUrl}/agents/${file}"
-            Invoke-WebRequest -Uri $url -OutFile (Join-Path $OutDir $file) -UseBasicParsing
+            $dest = Join-Path $OutDir 'agents' $file
+            $destDir = Split-Path $dest -Parent
+            if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+            Invoke-WebRequest -Uri "${SourceBaseUrl}/agents/${file}" -OutFile $dest -UseBasicParsing
         }
 
         foreach ($file in $PROTOCOL_FILES) {
-            $destSubDir = Join-Path $OutDir (Split-Path $file -Parent)
-            if (-not (Test-Path $destSubDir)) { New-Item -ItemType Directory -Path $destSubDir -Force | Out-Null }
-            $url = "${SourceBaseUrl}/agents/${file}"
-            Invoke-WebRequest -Uri $url -OutFile (Join-Path $OutDir $file) -UseBasicParsing
+            $dest = Join-Path (Join-Path $OutDir 'agents') $file
+            $destDir = Split-Path $dest -Parent
+            if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+            Invoke-WebRequest -Uri "${SourceBaseUrl}/agents/${file}" -OutFile $dest -UseBasicParsing
         }
 
-        $url = "${SourceBaseUrl}/rules/${RULE_FILE}"
-        Invoke-WebRequest -Uri $url -OutFile (Join-Path $OutDir $RULE_FILE) -UseBasicParsing
+        $rulesOut = Join-Path $OutDir 'rules'
+        if (-not (Test-Path $rulesOut)) { New-Item -ItemType Directory -Path $rulesOut -Force | Out-Null }
+        Invoke-WebRequest -Uri "${SourceBaseUrl}/rules/${RULE_FILE}" -OutFile (Join-Path $rulesOut $RULE_FILE) -UseBasicParsing
 
         $cmdOutDir = Join-Path $OutDir 'commands'
         if (-not (Test-Path $cmdOutDir)) { New-Item -ItemType Directory -Path $cmdOutDir -Force | Out-Null }
         foreach ($file in $COMMAND_FILES) {
-            $url = "${SourceBaseUrl}/commands/${file}"
-            Invoke-WebRequest -Uri $url -OutFile (Join-Path $cmdOutDir $file) -UseBasicParsing
+            Invoke-WebRequest -Uri "${SourceBaseUrl}/commands/${file}" -OutFile (Join-Path $cmdOutDir $file) -UseBasicParsing
         }
 
         $hooksOutDir = Join-Path $OutDir 'hooks'
         if (-not (Test-Path $hooksOutDir)) { New-Item -ItemType Directory -Path $hooksOutDir -Force | Out-Null }
         foreach ($file in $HOOK_FILES) {
-            $url = "${SourceBaseUrl}/hooks/${file}"
-            Invoke-WebRequest -Uri $url -OutFile (Join-Path $hooksOutDir $file) -UseBasicParsing
+            Invoke-WebRequest -Uri "${SourceBaseUrl}/hooks/${file}" -OutFile (Join-Path $hooksOutDir $file) -UseBasicParsing
         }
 
-        foreach ($file in $CONFIG_FILES) {
-            Invoke-WebRequest -Uri "${SourceBaseUrl}/${file}" -OutFile (Join-Path $OutDir $file) -UseBasicParsing
+        $manifestOut = Join-Path $OutDir '.cursor-plugin'
+        if (-not (Test-Path $manifestOut)) { New-Item -ItemType Directory -Path $manifestOut -Force | Out-Null }
+        foreach ($file in $PLUGIN_MANIFEST_FILES) {
+            Invoke-WebRequest -Uri "${SourceBaseUrl}/.cursor-plugin/${file}" -OutFile (Join-Path $manifestOut $file) -UseBasicParsing
         }
 
-        # Download skills via MANIFEST
+        Invoke-WebRequest -Uri "${SourceBaseUrl}/permissions.json" -OutFile (Join-Path $OutDir 'permissions.json') -UseBasicParsing
+
         $manifestUrl = "${SourceBaseUrl}/skills/MANIFEST"
         $manifestTmp = Join-Path ([System.IO.Path]::GetTempPath()) "oh-my-cursor-manifest-$([guid]::NewGuid().ToString('N').Substring(0, 8))"
         try {
@@ -465,6 +523,104 @@ function Install-FileSet {
     Write-Host ''
 }
 
+function Write-ProjectHooksJson {
+    param(
+        [string]$Dest,
+        [bool]$IsDryRun
+    )
+    if ($IsDryRun) {
+        if (Test-Path $Dest) {
+            Write-Host '  [update] hooks.json (project paths)' -ForegroundColor Yellow
+        }
+        else {
+            Write-Host '  [new] hooks.json (project paths)' -ForegroundColor Green
+        }
+        return
+    }
+    $destDir = Split-Path $Dest -Parent
+    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+    $body = @'
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      { "command": ".cursor/hooks/guard-shell.sh", "failClosed": true }
+    ],
+    "afterFileEdit": [
+      { "command": ".cursor/hooks/post-edit-lint.sh" }
+    ]
+  }
+}
+'@
+    [IO.File]::WriteAllText($Dest, ($body -replace "`r`n", "`n"))
+    Write-Host '  [installed] hooks.json (project paths)' -ForegroundColor Green
+}
+
+# ---------------------------------------------------------------------------
+# Migrate leftover v0.4 user-scope injection
+# ---------------------------------------------------------------------------
+
+function Remove-LegacyUserInjection {
+    param(
+        [string]$CursorDir,
+        [bool]$IsDryRun
+    )
+
+    Write-Host "Checking for leftover user-scope injection in ${CursorDir}" -ForegroundColor White
+    Write-Host ''
+
+    $migrated = 0
+    foreach ($file in ($AGENT_FILES + $LEGACY_AGENT_FILES + $PROTOCOL_FILES + $LEGACY_PROTOCOL_FILES)) {
+        if (Remove-PathIfPresent -Target (Join-Path $CursorDir "agents/$file") -Label "agents/${file}" -IsDryRun $IsDryRun) {
+            $migrated++
+        }
+    }
+    foreach ($file in $COMMAND_FILES) {
+        if (Remove-PathIfPresent -Target (Join-Path $CursorDir "commands/$file") -Label "commands/${file}" -IsDryRun $IsDryRun) {
+            $migrated++
+        }
+    }
+    foreach ($file in $HOOK_SCRIPT_FILES) {
+        if (Remove-PathIfPresent -Target (Join-Path $CursorDir "hooks/$file") -Label "hooks/${file}" -IsDryRun $IsDryRun) {
+            $migrated++
+        }
+    }
+    if (Remove-PathIfPresent -Target (Join-Path $CursorDir "rules/$RULE_FILE") -Label "rules/${RULE_FILE}" -IsDryRun $IsDryRun) {
+        $migrated++
+    }
+    if (Remove-PathIfPresent -Target (Join-Path $CursorDir "rules/$RULE_FILE_DISABLED") -Label "rules/${RULE_FILE_DISABLED}" -IsDryRun $IsDryRun) {
+        $migrated++
+    }
+    foreach ($skill in $SKILL_DIRS) {
+        if (Remove-PathIfPresent -Target (Join-Path $CursorDir "skills/$skill") -Label "skills/${skill}/" -IsDryRun $IsDryRun) {
+            $migrated++
+        }
+    }
+
+    if ($migrated -gt 0) {
+        Write-Host ''
+        Write-Host "  Removed ${migrated} leftover file(s) from the old ~/.cursor injection layout." -ForegroundColor Yellow
+        if (-not $IsDryRun) {
+            foreach ($empty in @(
+                    (Join-Path $CursorDir 'agents/protocols'),
+                    (Join-Path $CursorDir 'agents'),
+                    (Join-Path $CursorDir 'commands'),
+                    (Join-Path $CursorDir 'hooks'),
+                    (Join-Path $CursorDir 'rules'),
+                    (Join-Path $CursorDir 'skills')
+                )) {
+                if ((Test-Path $empty) -and -not (Get-ChildItem $empty -Force -ErrorAction SilentlyContinue)) {
+                    Remove-Item $empty -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+    }
+    else {
+        Write-Host '  None found' -ForegroundColor DarkGray
+    }
+    Write-Host ''
+}
+
 # ---------------------------------------------------------------------------
 # Migrate legacy agent files (Greek mythology -> ATLA)
 # ---------------------------------------------------------------------------
@@ -513,14 +669,11 @@ function Remove-LegacyAgents {
 }
 
 # ---------------------------------------------------------------------------
-# Install to a specific tool directory (cursor, claude, or codex)
+# Git pre-commit + install targets
 # ---------------------------------------------------------------------------
 
 function Install-GitPreCommitHook {
     param([bool]$IsDryRun)
-    # Defense-in-depth: the beforeShellExecution guard only sees shell `git commit`; Cursor's
-    # agent can also commit via its native git path (observed on Cursor 3.9), bypassing it.
-    # A real git pre-commit hook catches anti-pattern commits regardless of how they are made.
     $gitDir = (& git rev-parse --absolute-git-dir 2>$null)
     if (-not $gitDir) { Write-Host '  [skip] git pre-commit hook (not a git repo)'; return }
     $hook = Join-Path (Join-Path $gitDir 'hooks') 'pre-commit'
@@ -537,9 +690,31 @@ function Install-GitPreCommitHook {
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 exec "$root/.cursor/hooks/pre-commit-check.sh"
 '@
-    # LF line endings so the hook runs under Git-for-Windows bash / WSL
     [IO.File]::WriteAllText($hook, ($body -replace "`r`n", "`n"))
     Write-Host "  [installed] git pre-commit hook ($hook)" -ForegroundColor Green
+}
+
+function Install-CursorPlugin {
+    param(
+        [string]$Dest,
+        [string]$WorkDir,
+        [bool]$IsForce,
+        [bool]$IsDryRun
+    )
+
+    Remove-LegacyUserInjection -CursorDir (Join-Path $HOME '.cursor') -IsDryRun $IsDryRun
+    Remove-LegacyAgents -AgentsDir (Join-Path $Dest 'agents') -IsDryRun $IsDryRun
+
+    if (-not $IsDryRun -and -not (Test-Path $Dest)) {
+        New-Item -ItemType Directory -Path $Dest -Force | Out-Null
+    }
+
+    Install-FileSet -SrcDir (Join-Path $WorkDir '.cursor-plugin') -DestDir (Join-Path $Dest '.cursor-plugin') -Label 'plugin manifest' -Files $PLUGIN_MANIFEST_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'agents') -DestDir (Join-Path $Dest 'agents') -Label 'agents' -Files $AGENT_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'agents') -DestDir (Join-Path $Dest 'agents') -Label 'protocols' -Files $PROTOCOL_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'commands') -DestDir (Join-Path $Dest 'commands') -Label 'commands' -Files $COMMAND_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'hooks') -DestDir (Join-Path $Dest 'hooks') -Label 'hooks' -Files $HOOK_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'rules') -DestDir (Join-Path $Dest 'rules') -Label 'rules' -Files @($RULE_FILE) -IsForce $IsForce -IsDryRun $IsDryRun
 }
 
 function Install-ToDir {
@@ -554,69 +729,29 @@ function Install-ToDir {
     $rulesDir = Join-Path $TargetDir 'rules'
     $commandsDir = Join-Path $TargetDir 'commands'
     $hooksDir = Join-Path $TargetDir 'hooks'
+    $isProjectCursor = ($Scope -eq 'project' -and (Split-Path $TargetDir -Leaf) -eq '.cursor')
 
     Remove-LegacyAgents -AgentsDir $agentsDir -IsDryRun $IsDryRun
 
-    Install-FileSet -SrcDir $WorkDir -DestDir $agentsDir -Label 'agents' -Files $AGENT_FILES -IsForce $IsForce -IsDryRun $IsDryRun
-    Install-FileSet -SrcDir $WorkDir -DestDir $agentsDir -Label 'protocols' -Files $PROTOCOL_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'agents') -DestDir $agentsDir -Label 'agents' -Files $AGENT_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'agents') -DestDir $agentsDir -Label 'protocols' -Files $PROTOCOL_FILES -IsForce $IsForce -IsDryRun $IsDryRun
     Install-FileSet -SrcDir (Join-Path $WorkDir 'commands') -DestDir $commandsDir -Label 'commands' -Files $COMMAND_FILES -IsForce $IsForce -IsDryRun $IsDryRun
-    Install-FileSet -SrcDir (Join-Path $WorkDir 'hooks') -DestDir $hooksDir -Label 'hooks' -Files $HOOK_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'hooks') -DestDir $hooksDir -Label 'hook scripts' -Files $HOOK_SCRIPT_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'rules') -DestDir $rulesDir -Label 'rules' -Files @($RULE_FILE) -IsForce $IsForce -IsDryRun $IsDryRun
 
-    # Hook config (hooks.json / permissions.json) is PROJECT-scoped only: its hook command
-    # paths are relative to the workspace root, so user-scope (~/.cursor) would not resolve
-    # across other projects. Install it only for a project-scope cursor install.
-    if ($Scope -eq 'project' -and (Split-Path $TargetDir -Leaf) -eq '.cursor') {
-        Install-FileSet -SrcDir $WorkDir -DestDir $TargetDir -Label 'config' -Files $CONFIG_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    if ($isProjectCursor) {
+        Write-Host "Installing project hook config to ${TargetDir}" -ForegroundColor White
+        Write-Host ''
+        Write-ProjectHooksJson -Dest (Join-Path $TargetDir 'hooks.json') -IsDryRun $IsDryRun
+        if (Test-Path (Join-Path $WorkDir 'permissions.json')) {
+            Install-FileSet -SrcDir $WorkDir -DestDir $TargetDir -Label 'auto-review policy' -Files @('permissions.json') -IsForce $IsForce -IsDryRun $IsDryRun
+        }
+        else {
+            Write-Host ''
+        }
         Install-GitPreCommitHook -IsDryRun $IsDryRun
+        Write-Host ''
     }
-
-    # Install rule file
-    Write-Host "Installing rules to ${rulesDir}" -ForegroundColor White
-    Write-Host ''
-
-    if (-not $IsDryRun -and -not (Test-Path $rulesDir)) {
-        New-Item -ItemType Directory -Path $rulesDir -Force | Out-Null
-    }
-
-    $src = Join-Path $WorkDir $RULE_FILE
-    $dest = Join-Path $rulesDir $RULE_FILE
-
-    if (-not (Test-Path $dest)) {
-        if ($IsDryRun) {
-            Write-Host "  [new] ${RULE_FILE}" -ForegroundColor Green
-        }
-        else {
-            try {
-                Copy-Item $src $dest -Force
-                Write-Host "  [installed] ${RULE_FILE}" -ForegroundColor Green
-            }
-            catch {
-                Write-Host "  [failed] ${RULE_FILE}" -ForegroundColor Red
-            }
-        }
-    }
-    elseif ((Get-FileHash $src).Hash -eq (Get-FileHash $dest).Hash) {
-        Write-Host "  [unchanged] ${RULE_FILE}" -ForegroundColor DarkGray
-    }
-    elseif ($IsForce) {
-        if ($IsDryRun) {
-            Write-Host "  [update] ${RULE_FILE}" -ForegroundColor Yellow
-        }
-        else {
-            try {
-                Copy-Item $src $dest -Force
-                Write-Host "  [updated] ${RULE_FILE}" -ForegroundColor Yellow
-            }
-            catch {
-                Write-Host "  [failed] ${RULE_FILE}" -ForegroundColor Red
-            }
-        }
-    }
-    else {
-        Write-Host "  [skipped] ${RULE_FILE} (use -Force to overwrite)" -ForegroundColor Yellow
-    }
-
-    Write-Host ''
 }
 
 # ---------------------------------------------------------------------------
@@ -683,21 +818,6 @@ function Install-Skills {
     }
 
     Write-Host ''
-
-    # Check for legacy skills location
-    $legacySkillsDir = Join-Path (Join-Path $HOME '.agents') 'skills'
-    if (Test-Path $legacySkillsDir) {
-        $legacyCount = 0
-        foreach ($skill in $SKILL_DIRS) {
-            if (Test-Path (Join-Path $legacySkillsDir $skill)) { $legacyCount++ }
-        }
-        if ($legacyCount -gt 0) {
-            Write-Host "Note: ${legacyCount} matching skill(s) found in ~/.agents/skills/ (legacy location)." -ForegroundColor DarkGray
-            Write-Host "They show as 'Rules' in Cursor UI. The new installs in ~/.cursor/skills/ show as 'Skills'." -ForegroundColor DarkGray
-            Write-Host 'You can safely delete ~/.agents/skills/ once verified.' -ForegroundColor DarkGray
-            Write-Host ''
-        }
-    }
 }
 
 function Compare-SkillDirs {
@@ -725,6 +845,124 @@ function Compare-SkillDirs {
 # Uninstall logic
 # ---------------------------------------------------------------------------
 
+function Uninstall-Scattered {
+    param(
+        [string]$CursorDir,
+        [bool]$IsDryRun
+    )
+
+    $removed = 0
+    $agentsDir = Join-Path $CursorDir 'agents'
+    $rulesDir = Join-Path $CursorDir 'rules'
+    $commandsDir = Join-Path $CursorDir 'commands'
+    $hooksDir = Join-Path $CursorDir 'hooks'
+    $skillsDir = Join-Path $CursorDir 'skills'
+
+    Write-Host "Removing agents from ${agentsDir}" -ForegroundColor White
+    Write-Host ''
+    foreach ($file in ($AGENT_FILES + $LEGACY_AGENT_FILES + $PROTOCOL_FILES + $LEGACY_PROTOCOL_FILES)) {
+        $target = Join-Path $agentsDir $file
+        if (Test-Path $target) {
+            if ($IsDryRun) {
+                Write-Host "  [remove] ${file}" -ForegroundColor Red
+            }
+            else {
+                Remove-Item $target -Force
+                Write-Host "  [removed] ${file}" -ForegroundColor Red
+            }
+            $removed++
+        }
+    }
+    $protocolsDir = Join-Path $agentsDir 'protocols'
+    if (-not $IsDryRun -and (Test-Path $protocolsDir) -and -not (Get-ChildItem $protocolsDir -Force -ErrorAction SilentlyContinue)) {
+        Remove-Item $protocolsDir -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Host ''
+    Write-Host "Removing commands from ${commandsDir}" -ForegroundColor White
+    Write-Host ''
+    foreach ($file in $COMMAND_FILES) {
+        $target = Join-Path $commandsDir $file
+        if (Test-Path $target) {
+            if ($IsDryRun) {
+                Write-Host "  [remove] ${file}" -ForegroundColor Red
+            }
+            else {
+                Remove-Item $target -Force
+                Write-Host "  [removed] ${file}" -ForegroundColor Red
+            }
+            $removed++
+        }
+    }
+
+    Write-Host ''
+    Write-Host "Removing hooks from ${hooksDir}" -ForegroundColor White
+    Write-Host ''
+    foreach ($file in ($HOOK_SCRIPT_FILES + @('hooks.json'))) {
+        $target = Join-Path $hooksDir $file
+        if (Test-Path $target) {
+            if ($IsDryRun) {
+                Write-Host "  [remove] ${file}" -ForegroundColor Red
+            }
+            else {
+                Remove-Item $target -Force
+                Write-Host "  [removed] ${file}" -ForegroundColor Red
+            }
+            $removed++
+        }
+    }
+
+    foreach ($file in @('hooks.json', 'permissions.json')) {
+        $target = Join-Path $CursorDir $file
+        if (Test-Path $target) {
+            if ($IsDryRun) {
+                Write-Host "  [remove] ${file}" -ForegroundColor Red
+            }
+            else {
+                Remove-Item $target -Force
+                Write-Host "  [removed] ${file}" -ForegroundColor Red
+            }
+            $removed++
+        }
+    }
+
+    Write-Host ''
+    Write-Host "Removing rules from ${rulesDir}" -ForegroundColor White
+    Write-Host ''
+    foreach ($file in @($RULE_FILE, $RULE_FILE_DISABLED)) {
+        $target = Join-Path $rulesDir $file
+        if (Test-Path $target) {
+            if ($IsDryRun) {
+                Write-Host "  [remove] ${file}" -ForegroundColor Red
+            }
+            else {
+                Remove-Item $target -Force
+                Write-Host "  [removed] ${file}" -ForegroundColor Red
+            }
+            $removed++
+        }
+    }
+
+    Write-Host ''
+    Write-Host "Removing skills from ${skillsDir}" -ForegroundColor White
+    Write-Host ''
+    foreach ($skill in $SKILL_DIRS) {
+        $skillDir = Join-Path $skillsDir $skill
+        if (Test-Path $skillDir) {
+            if ($IsDryRun) {
+                Write-Host "  [remove] ${skill}/" -ForegroundColor Red
+            }
+            else {
+                Remove-Item $skillDir -Recurse -Force
+                Write-Host "  [removed] ${skill}/" -ForegroundColor Red
+            }
+            $removed++
+        }
+    }
+
+    $script:RemovedCount = $removed
+}
+
 function Uninstall-Agents {
     param(
         [hashtable]$Dirs,
@@ -742,96 +980,34 @@ function Uninstall-Agents {
 
     $removed = 0
 
-    Write-Host "Removing agents from $($Dirs.AgentsDir)" -ForegroundColor White
-    Write-Host ''
-
-    foreach ($file in ($AGENT_FILES + $LEGACY_AGENT_FILES)) {
-        $target = Join-Path $Dirs.AgentsDir $file
-        if (Test-Path $target) {
+    if ($Scope -eq 'user') {
+        if ($Dirs.PluginDir -and (Test-Path $Dirs.PluginDir)) {
+            Write-Host "Removing Cursor plugin from $($Dirs.PluginDir)" -ForegroundColor White
+            Write-Host ''
             if ($IsDryRun) {
-                Write-Host "  [remove] ${file}" -ForegroundColor Red
+                Write-Host "  [remove] $($Dirs.PluginDir)" -ForegroundColor Red
             }
             else {
-                Remove-Item $target -Force
-                Write-Host "  [removed] ${file}" -ForegroundColor Red
+                Remove-Item $Dirs.PluginDir -Recurse -Force
+                Write-Host "  [removed] $($Dirs.PluginDir)" -ForegroundColor Red
+                $localDir = Split-Path $Dirs.PluginDir -Parent
+                if ((Test-Path $localDir) -and -not (Get-ChildItem $localDir -Force -ErrorAction SilentlyContinue)) {
+                    Remove-Item $localDir -Force -ErrorAction SilentlyContinue
+                }
             }
             $removed++
+            Write-Host ''
         }
+        Write-Host "Removing leftover v0.4 injection from $(Join-Path $HOME '.cursor')" -ForegroundColor White
+        Write-Host ''
+        Uninstall-Scattered -CursorDir (Join-Path $HOME '.cursor') -IsDryRun $IsDryRun
+        $removed += $script:RemovedCount
+    }
+    else {
+        Uninstall-Scattered -CursorDir $Dirs.CursorDir -IsDryRun $IsDryRun
+        $removed += $script:RemovedCount
     }
 
-    foreach ($file in ($PROTOCOL_FILES + $LEGACY_PROTOCOL_FILES)) {
-        $target = Join-Path $Dirs.AgentsDir $file
-        if (Test-Path $target) {
-            if ($IsDryRun) {
-                Write-Host "  [remove] ${file}" -ForegroundColor Red
-            }
-            else {
-                Remove-Item $target -Force
-                Write-Host "  [removed] ${file}" -ForegroundColor Red
-            }
-            $removed++
-        }
-    }
-
-    $protocolsDir = Join-Path $Dirs.AgentsDir 'protocols'
-    if (-not $IsDryRun -and (Test-Path $protocolsDir)) {
-        $remaining = Get-ChildItem $protocolsDir -ErrorAction SilentlyContinue
-        if (-not $remaining -or $remaining.Count -eq 0) {
-            Remove-Item $protocolsDir -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    Write-Host ''
-    Write-Host "Removing commands from $($Dirs.CommandsDir)" -ForegroundColor White
-    Write-Host ''
-
-    foreach ($file in $COMMAND_FILES) {
-        $target = Join-Path $Dirs.CommandsDir $file
-        if (Test-Path $target) {
-            if ($IsDryRun) {
-                Write-Host "  [remove] ${file}" -ForegroundColor Red
-            }
-            else {
-                Remove-Item $target -Force
-                Write-Host "  [removed] ${file}" -ForegroundColor Red
-            }
-            $removed++
-        }
-    }
-
-    Write-Host ''
-    Write-Host "Removing hooks from $($Dirs.HooksDir)" -ForegroundColor White
-    Write-Host ''
-
-    foreach ($file in $HOOK_FILES) {
-        $target = Join-Path $Dirs.HooksDir $file
-        if (Test-Path $target) {
-            if ($IsDryRun) {
-                Write-Host "  [remove] ${file}" -ForegroundColor Red
-            }
-            else {
-                Remove-Item $target -Force
-                Write-Host "  [removed] ${file}" -ForegroundColor Red
-            }
-            $removed++
-        }
-    }
-
-    foreach ($file in $CONFIG_FILES) {
-        $target = Join-Path $Dirs.CursorDir $file
-        if (Test-Path $target) {
-            if ($IsDryRun) {
-                Write-Host "  [remove] ${file}" -ForegroundColor Red
-            }
-            else {
-                Remove-Item $target -Force
-                Write-Host "  [removed] ${file}" -ForegroundColor Red
-            }
-            $removed++
-        }
-    }
-
-    # Remove our git pre-commit hook (only if it's ours)
     $gitDir = (& git rev-parse --absolute-git-dir 2>$null)
     if ($gitDir) {
         $gitPc = Join-Path (Join-Path $gitDir 'hooks') 'pre-commit'
@@ -842,52 +1018,6 @@ function Uninstall-Agents {
             else {
                 Remove-Item $gitPc -Force
                 Write-Host '  [removed] git pre-commit hook' -ForegroundColor Red
-            }
-            $removed++
-        }
-    }
-
-    Write-Host ''
-    Write-Host "Removing rules from $($Dirs.RulesDir)" -ForegroundColor White
-    Write-Host ''
-
-    $target = Join-Path $Dirs.RulesDir $RULE_FILE
-    if (Test-Path $target) {
-        if ($IsDryRun) {
-            Write-Host "  [remove] ${RULE_FILE}" -ForegroundColor Red
-        }
-        else {
-            Remove-Item $target -Force
-            Write-Host "  [removed] ${RULE_FILE}" -ForegroundColor Red
-        }
-        $removed++
-    }
-
-    $target = Join-Path $Dirs.RulesDir $RULE_FILE_DISABLED
-    if (Test-Path $target) {
-        if ($IsDryRun) {
-            Write-Host "  [remove] ${RULE_FILE_DISABLED}" -ForegroundColor Red
-        }
-        else {
-            Remove-Item $target -Force
-            Write-Host "  [removed] ${RULE_FILE_DISABLED}" -ForegroundColor Red
-        }
-        $removed++
-    }
-
-    Write-Host ''
-    Write-Host "Removing skills from $($Dirs.SkillsDir)" -ForegroundColor White
-    Write-Host ''
-
-    foreach ($skill in $SKILL_DIRS) {
-        $skillDir = Join-Path $Dirs.SkillsDir $skill
-        if (Test-Path $skillDir) {
-            if ($IsDryRun) {
-                Write-Host "  [remove] ${skill}/" -ForegroundColor Red
-            }
-            else {
-                Remove-Item $skillDir -Recurse -Force
-                Write-Host "  [removed] ${skill}/" -ForegroundColor Red
             }
             $removed++
         }
@@ -944,10 +1074,16 @@ function Main {
 
         New-SourceFiles -Dir $workDir
 
-        # Install to cursor dir
-        Write-Host "Installing to $($dirs.CursorDir)" -ForegroundColor White
-        Write-Host ''
-        Install-ToDir -TargetDir $dirs.CursorDir -WorkDir $workDir -IsForce $Force.IsPresent -IsDryRun $DryRun.IsPresent
+        if ($Scope -eq 'user') {
+            Write-Host "Installing Cursor plugin to $($dirs.PluginDir)" -ForegroundColor White
+            Write-Host ''
+            Install-CursorPlugin -Dest $dirs.PluginDir -WorkDir $workDir -IsForce $Force.IsPresent -IsDryRun $DryRun.IsPresent
+        }
+        else {
+            Write-Host "Installing to $($dirs.CursorDir)" -ForegroundColor White
+            Write-Host ''
+            Install-ToDir -TargetDir $dirs.CursorDir -WorkDir $workDir -IsForce $Force.IsPresent -IsDryRun $DryRun.IsPresent
+        }
 
         if ($AlsoClaude) {
             $claudeDir = if ($Scope -eq 'user') { Join-Path $HOME '.claude' } else { Join-Path '.' '.claude' }
@@ -970,17 +1106,20 @@ function Main {
         Write-Host 'Summary' -ForegroundColor White
         Write-Host "  Mode: ${CURSOR_MODE_LABEL}" -ForegroundColor DarkGray
         if (-not $NoSkills) {
-            Write-Host "  Agents: $($AGENT_FILES.Count) | Commands: $($COMMAND_FILES.Count) | Hooks: $($HOOK_FILES.Count) | Skills: $($SKILL_DIRS.Count)" -ForegroundColor Green
+            Write-Host "  Agents: $($AGENT_FILES.Count) | Commands: $($COMMAND_FILES.Count) | Hooks: 3 | Skills: $($SKILL_DIRS.Count)" -ForegroundColor Green
         }
         else {
-            Write-Host "  Agents: $($AGENT_FILES.Count) | Commands: $($COMMAND_FILES.Count) | Hooks: $($HOOK_FILES.Count) | Skills: skipped" -ForegroundColor Green
+            Write-Host "  Agents: $($AGENT_FILES.Count) | Commands: $($COMMAND_FILES.Count) | Hooks: 3 | Skills: skipped" -ForegroundColor Green
         }
         Write-Host ''
 
         if ($Scope -eq 'user') {
-            $rulePath = Join-Path $dirs.RulesDir $RULE_FILE
-            Write-Host 'Note: Cursor may require manual approval for file-based user rules.' -ForegroundColor Yellow
-            Write-Host "  If the rule does not appear, open ${rulePath} in Cursor and click ""Always Allow""." -ForegroundColor Yellow
+            Write-Host 'Reload Cursor (Developer: Reload Window) or restart the app.' -ForegroundColor Yellow
+            Write-Host 'Open Customize and confirm the oh-my-cursor plugin components are listed.' -ForegroundColor Yellow
+            Write-Host ''
+        }
+        elseif ($Scope -eq 'project') {
+            Write-Host 'Fully restart Cursor (Alt+F4) so project hooks register.' -ForegroundColor Yellow
             Write-Host ''
         }
     }

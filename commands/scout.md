@@ -1,3 +1,8 @@
+---
+name: scout
+description: Quick focused task via Momo
+---
+
 Use Momo (the quick focused agent) for this task.
 
 Execute the task directly with speed and precision:

@@ -3,14 +3,15 @@
 
 set -euo pipefail
 
-VERSION="0.4.2"
-CURSOR_MODE_LABEL="Team Avatar (Cursor 3.4+)"
+VERSION="0.5.0"
+CURSOR_MODE_LABEL="Team Avatar (Cursor Plugin)"
+PLUGIN_NAME="oh-my-cursor"
 
 AGENT_FILES=(aang.md sokka.md katara.md zuko.md toph.md appa.md momo.md iroh.md)
 PROTOCOL_FILES=(protocols/team-avatar.md)
 COMMAND_FILES=(plan.md build.md search.md fix.md tasks.md scout.md cactus-juice.md doc.md image.md)
-HOOK_FILES=(post-edit-lint.sh pre-commit-check.sh guard-shell.sh)
-CONFIG_FILES=(hooks.json permissions.json)
+HOOK_FILES=(post-edit-lint.sh pre-commit-check.sh guard-shell.sh hooks.json)
+PLUGIN_MANIFEST_FILES=(plugin.json marketplace.json)
 RULE_FILE="orchestrator.mdc"
 SKILL_DIRS=(
   architect
@@ -85,6 +86,21 @@ log_verbose() {
   fi
 }
 
+remove_path() {
+  local target="$1"
+  local label="${2:-$1}"
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    if [ "$DRY_RUN" = true ]; then
+      log "  ${RED}[remove]${RESET} ${label}"
+    else
+      rm -rf "$target"
+      log "  ${RED}[removed]${RESET} ${label}"
+    fi
+    return 0
+  fi
+  return 1
+}
+
 # ---------------------------------------------------------------------------
 # Usage
 # ---------------------------------------------------------------------------
@@ -94,7 +110,7 @@ usage() {
 ${BOLD}oh-my-cursor installer${RESET} v${VERSION}
 ${DIM}${CURSOR_MODE_LABEL}${RESET}
 
-Install Team Avatar agent configurations for Cursor.
+Install Team Avatar as a Cursor plugin (rules, agents, commands, hooks, skills).
 
 ${BOLD}USAGE${RESET}
   curl -fsSL https://raw.githubusercontent.com/tmcfarlane/oh-my-cursor/main/install.sh | bash
@@ -102,15 +118,15 @@ ${BOLD}USAGE${RESET}
   bash install.sh [OPTIONS]
 
 ${BOLD}OPTIONS${RESET}
-  --user          Install to user scope (~/.cursor/) [default]
-  --project       Install to project scope (./.cursor/)
-  --claude        Also install to .claude/agents/ for Claude Code compatibility
-  --codex         Also install to .codex/agents/ for Codex compatibility
+  --user          Install the Cursor plugin to ~/.cursor/plugins/local/${PLUGIN_NAME} [default]
+  --project       Install to project scope (./.cursor/) for this repo and cloud agents
+  --claude        Also install to .claude/ for Claude Code compatibility
+  --codex         Also install to .codex/ for Codex compatibility
   --no-skills     Skip installing bundled agent skills (skills are installed by default)
   -f, --force     Overwrite existing files
   -n, --dry-run   Show what would be done without making changes
   -v, --verbose   Enable verbose output
-  --uninstall     Remove installed agent and rule files
+  --uninstall     Remove the plugin and leftover v0.4 injection files
   --disable       Disable orchestration (rename rule so Cursor stops applying it)
   --enable        Re-enable orchestration (rename rule back)
   -h, --help      Show this help message
@@ -162,63 +178,87 @@ parse_args() {
 resolve_dirs() {
   if [ "$SCOPE" = "user" ]; then
     CURSOR_DIR="${HOME}/.cursor"
+    PLUGIN_DIR="${CURSOR_DIR}/plugins/local/${PLUGIN_NAME}"
+    AGENTS_DIR="${PLUGIN_DIR}/agents"
+    RULES_DIR="${PLUGIN_DIR}/rules"
+    COMMANDS_DIR="${PLUGIN_DIR}/commands"
+    HOOKS_DIR="${PLUGIN_DIR}/hooks"
+    SKILLS_DIR="${PLUGIN_DIR}/skills"
+    MANIFEST_DIR="${PLUGIN_DIR}/.cursor-plugin"
   else
     CURSOR_DIR="./.cursor"
+    PLUGIN_DIR=""
+    AGENTS_DIR="${CURSOR_DIR}/agents"
+    RULES_DIR="${CURSOR_DIR}/rules"
+    COMMANDS_DIR="${CURSOR_DIR}/commands"
+    HOOKS_DIR="${CURSOR_DIR}/hooks"
+    SKILLS_DIR="${CURSOR_DIR}/skills"
+    MANIFEST_DIR=""
   fi
-  AGENTS_DIR="${CURSOR_DIR}/agents"
-  RULES_DIR="${CURSOR_DIR}/rules"
-  COMMANDS_DIR="${CURSOR_DIR}/commands"
-  HOOKS_DIR="${CURSOR_DIR}/hooks"
-  SKILLS_DIR="${CURSOR_DIR}/skills"
 }
 
 RULE_FILE_DISABLED="${RULE_FILE}.disabled"
 
+orchestrator_rule_paths() {
+  # User-scope plugin copy, then leftover v0.4 injection, then project .cursor/.
+  if [ "$SCOPE" = "user" ]; then
+    printf '%s\n' "${PLUGIN_DIR}/rules"
+    printf '%s\n' "${HOME}/.cursor/rules"
+  else
+    printf '%s\n' "${RULES_DIR}"
+  fi
+}
+
 # Toggle orchestration rule so Cursor loads it (--enable) or ignores it (--disable).
 toggle_orchestrator_rule() {
-  local rule_path="${RULES_DIR}/${RULE_FILE}"
-  local disabled_path="${RULES_DIR}/${RULE_FILE_DISABLED}"
-
   log "${BOLD}oh-my-cursor${RESET} v${VERSION}"
   log "${DIM}${CURSOR_MODE_LABEL}${RESET}"
   log ""
 
-  if [ "$DISABLE" = true ]; then
-    if [ -f "$rule_path" ]; then
-      if [ "$DRY_RUN" = true ]; then
-        log "  ${YELLOW}[would disable]${RESET} ${RULE_FILE} in ${RULES_DIR}"
+  local found=false
+  local rules_dir rule_path disabled_path
+  while IFS= read -r rules_dir; do
+    [ -z "$rules_dir" ] && continue
+    rule_path="${rules_dir}/${RULE_FILE}"
+    disabled_path="${rules_dir}/${RULE_FILE_DISABLED}"
+    if [ ! -f "$rule_path" ] && [ ! -f "$disabled_path" ]; then
+      continue
+    fi
+    found=true
+
+    if [ "$DISABLE" = true ]; then
+      if [ -f "$rule_path" ]; then
+        if [ "$DRY_RUN" = true ]; then
+          log "  ${YELLOW}[would disable]${RESET} ${RULE_FILE} in ${rules_dir}"
+        else
+          mv "$rule_path" "$disabled_path"
+          log "  ${GREEN}[disabled]${RESET} ${rule_path} — orchestration off. Agents and commands still available."
+        fi
       else
-        mv "$rule_path" "$disabled_path"
-        log "  ${GREEN}[disabled]${RESET} ${RULE_FILE} — orchestration off. Agents and commands still available."
+        log "  ${DIM}Already disabled${RESET} (${disabled_path})"
       fi
     else
       if [ -f "$disabled_path" ]; then
-        log "  ${DIM}Already disabled${RESET} (${RULE_FILE_DISABLED} present)"
+        if [ "$DRY_RUN" = true ]; then
+          log "  ${YELLOW}[would enable]${RESET} ${RULE_FILE} in ${rules_dir}"
+        else
+          mv "$disabled_path" "$rule_path"
+          log "  ${GREEN}[enabled]${RESET} ${rule_path} — Team Avatar orchestration on."
+        fi
       else
-        log "  ${YELLOW}No rule file found${RESET} at ${rule_path}"
+        log "  ${DIM}Already enabled${RESET} (${rule_path})"
       fi
     fi
-  else
-    if [ -f "$disabled_path" ]; then
-      if [ "$DRY_RUN" = true ]; then
-        log "  ${YELLOW}[would enable]${RESET} ${RULE_FILE} in ${RULES_DIR}"
-      else
-        mv "$disabled_path" "$rule_path"
-        log "  ${GREEN}[enabled]${RESET} ${RULE_FILE} — Team Avatar orchestration on."
-      fi
-    else
-      if [ -f "$rule_path" ]; then
-        log "  ${DIM}Already enabled${RESET} (${RULE_FILE} present)"
-      else
-        log "  ${YELLOW}No disabled rule found${RESET} at ${disabled_path}"
-      fi
-    fi
+  done < <(orchestrator_rule_paths)
+
+  if [ "$found" = false ]; then
+    log "  ${YELLOW}No orchestrator rule found.${RESET} Install first, then retry --disable/--enable."
   fi
   log ""
 }
 
 # ---------------------------------------------------------------------------
-# Embedded source files (all 12 agent/rule files)
+# Embedded source files
 # ---------------------------------------------------------------------------
 
 SOURCE_BASE_URL_DEFAULT="https://raw.githubusercontent.com/tmcfarlane/oh-my-cursor/main"
@@ -243,43 +283,54 @@ copy_sources_from_local_repo() {
   [ -d "${script_dir}/agents" ] || return 1
   [ -d "${script_dir}/rules" ] || return 1
 
+  mkdir -p "${out_dir}/agents" "${out_dir}/rules" "${out_dir}/commands" "${out_dir}/hooks" "${out_dir}/.cursor-plugin"
+
   local file
   for file in "${AGENT_FILES[@]}"; do
-    cp "${script_dir}/agents/${file}" "${out_dir}/${file}" || return 1
+    cp "${script_dir}/agents/${file}" "${out_dir}/agents/${file}" || return 1
   done
 
   for file in "${PROTOCOL_FILES[@]}"; do
-    mkdir -p "${out_dir}/$(dirname "$file")"
-    cp "${script_dir}/agents/${file}" "${out_dir}/${file}" || return 1
+    mkdir -p "${out_dir}/agents/$(dirname "$file")"
+    cp "${script_dir}/agents/${file}" "${out_dir}/agents/${file}" || return 1
   done
 
-  cp "${script_dir}/rules/${RULE_FILE}" "${out_dir}/${RULE_FILE}" || return 1
+  cp "${script_dir}/rules/${RULE_FILE}" "${out_dir}/rules/${RULE_FILE}" || return 1
 
   if [ -d "${script_dir}/commands" ]; then
-    mkdir -p "${out_dir}/commands"
     for file in "${COMMAND_FILES[@]}"; do
       cp "${script_dir}/commands/${file}" "${out_dir}/commands/${file}" || return 1
     done
   fi
 
   if [ -d "${script_dir}/hooks" ]; then
-    mkdir -p "${out_dir}/hooks"
     for file in "${HOOK_FILES[@]}"; do
       cp "${script_dir}/hooks/${file}" "${out_dir}/hooks/${file}" || return 1
     done
+  fi
+
+  for file in "${PLUGIN_MANIFEST_FILES[@]}"; do
+    if [ -f "${script_dir}/.cursor-plugin/${file}" ]; then
+      cp "${script_dir}/.cursor-plugin/${file}" "${out_dir}/.cursor-plugin/${file}" || return 1
+    fi
+  done
+
+  if [ -f "${script_dir}/permissions.json" ]; then
+    cp "${script_dir}/permissions.json" "${out_dir}/permissions.json" || return 1
   fi
 
   if [ -d "${script_dir}/skills" ]; then
     cp -r "${script_dir}/skills" "${out_dir}/skills" || return 1
   fi
 
-  for file in "${CONFIG_FILES[@]}"; do
-    if [ -f "${script_dir}/${file}" ]; then
-      cp "${script_dir}/${file}" "${out_dir}/${file}" || return 1
-    fi
-  done
-
   return 0
+}
+
+download_file() {
+  local url="$1"
+  local dest="$2"
+  mkdir -p "$(dirname "$dest")"
+  curl -fsSL "$url" -o "$dest"
 }
 
 download_sources_from_github() {
@@ -291,37 +342,31 @@ download_sources_from_github() {
   fi
 
   local base="$OH_MY_CURSOR_SOURCE_BASE_URL"
-  local file url
+  local file
 
   for file in "${AGENT_FILES[@]}"; do
-    url="${base}/agents/${file}"
-    curl -fsSL "$url" -o "${out_dir}/${file}" || return 1
+    download_file "${base}/agents/${file}" "${out_dir}/agents/${file}" || return 1
   done
 
   for file in "${PROTOCOL_FILES[@]}"; do
-    mkdir -p "${out_dir}/$(dirname "$file")"
-    url="${base}/agents/${file}"
-    curl -fsSL "$url" -o "${out_dir}/${file}" || return 1
+    download_file "${base}/agents/${file}" "${out_dir}/agents/${file}" || return 1
   done
 
-  url="${base}/rules/${RULE_FILE}"
-  curl -fsSL "$url" -o "${out_dir}/${RULE_FILE}" || return 1
+  download_file "${base}/rules/${RULE_FILE}" "${out_dir}/rules/${RULE_FILE}" || return 1
 
-  mkdir -p "${out_dir}/commands"
   for file in "${COMMAND_FILES[@]}"; do
-    url="${base}/commands/${file}"
-    curl -fsSL "$url" -o "${out_dir}/commands/${file}" || return 1
+    download_file "${base}/commands/${file}" "${out_dir}/commands/${file}" || return 1
   done
 
-  mkdir -p "${out_dir}/hooks"
   for file in "${HOOK_FILES[@]}"; do
-    url="${base}/hooks/${file}"
-    curl -fsSL "$url" -o "${out_dir}/hooks/${file}" || return 1
+    download_file "${base}/hooks/${file}" "${out_dir}/hooks/${file}" || return 1
   done
 
-  for file in "${CONFIG_FILES[@]}"; do
-    curl -fsSL "${base}/${file}" -o "${out_dir}/${file}" || return 1
+  for file in "${PLUGIN_MANIFEST_FILES[@]}"; do
+    download_file "${base}/.cursor-plugin/${file}" "${out_dir}/.cursor-plugin/${file}" || return 1
   done
+
+  download_file "${base}/permissions.json" "${out_dir}/permissions.json" || return 1
 
   local manifest_url="${base}/skills/MANIFEST"
   local manifest_tmp
@@ -330,8 +375,7 @@ download_sources_from_github() {
     mkdir -p "${out_dir}/skills"
     while IFS= read -r skill_file || [ -n "$skill_file" ]; do
       [ -z "$skill_file" ] && continue
-      mkdir -p "${out_dir}/skills/$(dirname "$skill_file")"
-      curl -fsSL "${base}/skills/${skill_file}" -o "${out_dir}/skills/${skill_file}" || true
+      download_file "${base}/skills/${skill_file}" "${out_dir}/skills/${skill_file}" || true
     done < "$manifest_tmp"
     cp "$manifest_tmp" "${out_dir}/skills/MANIFEST"
   fi
@@ -370,9 +414,6 @@ install_file_set() {
   local label="$3"
   shift 3
   local files=("$@")
-  local installed=0
-  local skipped=0
-  local updated=0
   local failed=0
 
   if [ ${#files[@]} -eq 0 ]; then
@@ -407,6 +448,9 @@ install_file_set() {
         log "  ${GREEN}[new]${RESET} ${file}"
       else
         if cp "$src" "$dest" 2>/dev/null; then
+          if [[ "$file" == *.sh ]]; then
+            chmod +x "$dest" 2>/dev/null || true
+          fi
           log "  ${GREEN}[installed]${RESET} ${file}"
         else
           log "  ${RED}[failed]${RESET} ${file}"
@@ -414,15 +458,16 @@ install_file_set() {
           continue
         fi
       fi
-      installed=$((installed + 1))
     elif cmp -s "$src" "$dest"; then
       log "  ${DIM}[unchanged]${RESET} ${file}"
-      skipped=$((skipped + 1))
     elif [ "$FORCE" = true ]; then
       if [ "$DRY_RUN" = true ]; then
         log "  ${YELLOW}[update]${RESET} ${file}"
       else
         if cp "$src" "$dest" 2>/dev/null; then
+          if [[ "$file" == *.sh ]]; then
+            chmod +x "$dest" 2>/dev/null || true
+          fi
           log "  ${YELLOW}[updated]${RESET} ${file}"
         else
           log "  ${RED}[failed]${RESET} ${file}"
@@ -430,15 +475,100 @@ install_file_set() {
           continue
         fi
       fi
-      updated=$((updated + 1))
     else
       log "  ${YELLOW}[skipped]${RESET} ${file} ${DIM}(use --force to overwrite)${RESET}"
-      skipped=$((skipped + 1))
     fi
   done
 
   log ""
   return $failed
+}
+
+write_project_hooks_json() {
+  local dest="$1"
+  if [ "$DRY_RUN" = true ]; then
+    if [ -f "$dest" ]; then
+      log "  ${YELLOW}[update]${RESET} hooks.json (project paths)"
+    else
+      log "  ${GREEN}[new]${RESET} hooks.json (project paths)"
+    fi
+    return 0
+  fi
+  mkdir -p "$(dirname "$dest")"
+  cat > "$dest" <<'EOF'
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      { "command": ".cursor/hooks/guard-shell.sh", "failClosed": true }
+    ],
+    "afterFileEdit": [
+      { "command": ".cursor/hooks/post-edit-lint.sh" }
+    ]
+  }
+}
+EOF
+  log "  ${GREEN}[installed]${RESET} hooks.json (project paths)"
+}
+
+# ---------------------------------------------------------------------------
+# Migrate leftover v0.4 user-scope injection (~/.cursor/{rules,agents,...})
+# ---------------------------------------------------------------------------
+
+migrate_legacy_user_injection() {
+  local cursor_dir="$1"
+  local migrated=0
+  local file skill
+
+  log "Checking for leftover user-scope injection in ${BOLD}${cursor_dir}${RESET}"
+  log ""
+
+  for file in "${AGENT_FILES[@]}" "${LEGACY_AGENT_FILES[@]}" "${PROTOCOL_FILES[@]}" "${LEGACY_PROTOCOL_FILES[@]}"; do
+    if remove_path "${cursor_dir}/agents/${file}" "agents/${file}"; then
+      migrated=$((migrated + 1))
+    fi
+  done
+
+  for file in "${COMMAND_FILES[@]}"; do
+    if remove_path "${cursor_dir}/commands/${file}" "commands/${file}"; then
+      migrated=$((migrated + 1))
+    fi
+  done
+
+  for file in post-edit-lint.sh pre-commit-check.sh guard-shell.sh; do
+    if remove_path "${cursor_dir}/hooks/${file}" "hooks/${file}"; then
+      migrated=$((migrated + 1))
+    fi
+  done
+
+  if remove_path "${cursor_dir}/rules/${RULE_FILE}" "rules/${RULE_FILE}"; then
+    migrated=$((migrated + 1))
+  fi
+  if remove_path "${cursor_dir}/rules/${RULE_FILE_DISABLED}" "rules/${RULE_FILE_DISABLED}"; then
+    migrated=$((migrated + 1))
+  fi
+
+  for skill in "${SKILL_DIRS[@]}"; do
+    if remove_path "${cursor_dir}/skills/${skill}" "skills/${skill}/"; then
+      migrated=$((migrated + 1))
+    fi
+  done
+
+  if [ "$migrated" -gt 0 ]; then
+    log ""
+    log "  ${YELLOW}Removed ${migrated} leftover file(s) from the old ~/.cursor injection layout.${RESET}"
+    if [ "$DRY_RUN" = false ]; then
+      rmdir "${cursor_dir}/agents/protocols" 2>/dev/null || true
+      rmdir "${cursor_dir}/agents" 2>/dev/null || true
+      rmdir "${cursor_dir}/commands" 2>/dev/null || true
+      rmdir "${cursor_dir}/hooks" 2>/dev/null || true
+      rmdir "${cursor_dir}/rules" 2>/dev/null || true
+      rmdir "${cursor_dir}/skills" 2>/dev/null || true
+    fi
+  else
+    log "  ${DIM}None found${RESET}"
+  fi
+  log ""
 }
 
 # ---------------------------------------------------------------------------
@@ -510,8 +640,26 @@ HOOK
 }
 
 # ---------------------------------------------------------------------------
-# Install to a specific tool directory (cursor, claude, or codex)
+# Install Cursor plugin (user scope) or scattered .cursor files (project / claude / codex)
 # ---------------------------------------------------------------------------
+
+install_cursor_plugin() {
+  local dest="$1"
+
+  migrate_legacy_user_injection "${HOME}/.cursor"
+  migrate_legacy_agents "${dest}/agents"
+
+  if [ "$DRY_RUN" = false ]; then
+    mkdir -p "$dest"
+  fi
+
+  install_file_set "${WORK_DIR}/.cursor-plugin" "${dest}/.cursor-plugin" "plugin manifest" "${PLUGIN_MANIFEST_FILES[@]}"
+  install_file_set "${WORK_DIR}/agents" "${dest}/agents" "agents" "${AGENT_FILES[@]}"
+  install_file_set "${WORK_DIR}/agents" "${dest}/agents" "protocols" "${PROTOCOL_FILES[@]}"
+  install_file_set "${WORK_DIR}/commands" "${dest}/commands" "commands" "${COMMAND_FILES[@]}"
+  install_file_set "${WORK_DIR}/hooks" "${dest}/hooks" "hooks" "${HOOK_FILES[@]}"
+  install_file_set "${WORK_DIR}/rules" "${dest}/rules" "rules" "${RULE_FILE}"
+}
 
 install_to_dir() {
   local cursor_dir="$1"
@@ -519,50 +667,32 @@ install_to_dir() {
   local rules_dir="${cursor_dir}/rules"
   local commands_dir="${cursor_dir}/commands"
   local hooks_dir="${cursor_dir}/hooks"
+  local is_project_cursor=false
+
+  if [ "$SCOPE" = "project" ] && [ "$cursor_dir" = "$CURSOR_DIR" ]; then
+    is_project_cursor=true
+  fi
 
   migrate_legacy_agents "$agents_dir"
 
-  install_file_set "$WORK_DIR" "$agents_dir" "agents" "${AGENT_FILES[@]}"
-  install_file_set "$WORK_DIR" "$agents_dir" "protocols" "${PROTOCOL_FILES[@]}"
+  install_file_set "${WORK_DIR}/agents" "$agents_dir" "agents" "${AGENT_FILES[@]}"
+  install_file_set "${WORK_DIR}/agents" "$agents_dir" "protocols" "${PROTOCOL_FILES[@]}"
   install_file_set "${WORK_DIR}/commands" "$commands_dir" "commands" "${COMMAND_FILES[@]}"
-  install_file_set "${WORK_DIR}/hooks" "$hooks_dir" "hooks" "${HOOK_FILES[@]}"
-  # Hook config (hooks.json / permissions.json) is PROJECT-scoped only: its hook command
-  # paths are relative to the workspace root, so user-scope (~/.cursor) hooks would not
-  # resolve across other projects. Install it only for a project-scope cursor install.
-  if [ "$SCOPE" = "project" ] && [ "$cursor_dir" = "$CURSOR_DIR" ]; then
-    install_file_set "$WORK_DIR" "$cursor_dir" "config" "${CONFIG_FILES[@]}"
+  install_file_set "${WORK_DIR}/hooks" "$hooks_dir" "hook scripts" post-edit-lint.sh pre-commit-check.sh guard-shell.sh
+  install_file_set "${WORK_DIR}/rules" "$rules_dir" "rules" "${RULE_FILE}"
+
+  if [ "$is_project_cursor" = true ]; then
+    log "Installing project hook config to ${BOLD}${cursor_dir}${RESET}"
+    log ""
+    write_project_hooks_json "${cursor_dir}/hooks.json"
+    if [ -f "${WORK_DIR}/permissions.json" ]; then
+      install_file_set "$WORK_DIR" "$cursor_dir" "auto-review policy" permissions.json
+    else
+      log ""
+    fi
     install_git_precommit_hook
+    log ""
   fi
-
-  # Install rule file
-  log "Installing rules to ${BOLD}${rules_dir}${RESET}"
-  log ""
-
-  if [ "$DRY_RUN" = false ]; then
-    mkdir -p "$rules_dir"
-  fi
-
-  local src="${WORK_DIR}/${RULE_FILE}"
-  local dest="${rules_dir}/${RULE_FILE}"
-
-  if [ ! -f "$dest" ]; then
-    if [ "$DRY_RUN" = true ]; then
-      log "  ${GREEN}[new]${RESET} ${RULE_FILE}"
-    else
-      cp "$src" "$dest" 2>/dev/null && log "  ${GREEN}[installed]${RESET} ${RULE_FILE}" || log "  ${RED}[failed]${RESET} ${RULE_FILE}"
-    fi
-  elif cmp -s "$src" "$dest"; then
-    log "  ${DIM}[unchanged]${RESET} ${RULE_FILE}"
-  elif [ "$FORCE" = true ]; then
-    if [ "$DRY_RUN" = true ]; then
-      log "  ${YELLOW}[update]${RESET} ${RULE_FILE}"
-    else
-      cp "$src" "$dest" 2>/dev/null && log "  ${YELLOW}[updated]${RESET} ${RULE_FILE}" || log "  ${RED}[failed]${RESET} ${RULE_FILE}"
-    fi
-  else
-    log "  ${YELLOW}[skipped]${RESET} ${RULE_FILE} ${DIM}(use --force to overwrite)${RESET}"
-  fi
-  log ""
 }
 
 # ---------------------------------------------------------------------------
@@ -570,11 +700,15 @@ install_to_dir() {
 # ---------------------------------------------------------------------------
 
 install_agents() {
-  local src_dir="$1"
-
-  log "Installing to ${BOLD}${CURSOR_DIR}${RESET}"
-  log ""
-  install_to_dir "$CURSOR_DIR"
+  if [ "$SCOPE" = "user" ]; then
+    log "Installing Cursor plugin to ${BOLD}${PLUGIN_DIR}${RESET}"
+    log ""
+    install_cursor_plugin "$PLUGIN_DIR"
+  else
+    log "Installing to ${BOLD}${CURSOR_DIR}${RESET}"
+    log ""
+    install_to_dir "$CURSOR_DIR"
+  fi
 
   if [ "$ALSO_CLAUDE" = true ]; then
     local claude_dir
@@ -603,16 +737,18 @@ install_agents() {
   log "${BOLD}Summary${RESET}"
   log "  ${DIM}Mode: ${CURSOR_MODE_LABEL}${RESET}"
   if [ "$WITH_SKILLS" = true ]; then
-    log "  ${GREEN}Agents: ${#AGENT_FILES[@]} | Commands: ${#COMMAND_FILES[@]} | Hooks: ${#HOOK_FILES[@]} | Skills: ${#SKILL_DIRS[@]}${RESET}"
+    log "  ${GREEN}Agents: ${#AGENT_FILES[@]} | Commands: ${#COMMAND_FILES[@]} | Hooks: 3 | Skills: ${#SKILL_DIRS[@]}${RESET}"
   else
-    log "  ${GREEN}Agents: ${#AGENT_FILES[@]} | Commands: ${#COMMAND_FILES[@]} | Hooks: ${#HOOK_FILES[@]} | Skills: skipped${RESET}"
+    log "  ${GREEN}Agents: ${#AGENT_FILES[@]} | Commands: ${#COMMAND_FILES[@]} | Hooks: 3 | Skills: skipped${RESET}"
   fi
   log ""
 
   if [ "$SCOPE" = "user" ]; then
-    local rule_path="${RULES_DIR}/${RULE_FILE}"
-    log "  ${YELLOW}Note: Cursor requires manual approval for file-based user rules.${RESET}"
-    log "  ${YELLOW}Open ${rule_path} in Cursor and click \"Always Allow\" to activate the orchestrator.${RESET}"
+    log "  ${YELLOW}Reload Cursor (Developer: Reload Window) or restart the app.${RESET}"
+    log "  ${YELLOW}Open Customize and confirm the oh-my-cursor plugin components are listed.${RESET}"
+    log ""
+  elif [ "$SCOPE" = "project" ]; then
+    log "  ${YELLOW}Fully restart Cursor (Cmd+Q / Alt+F4) so project hooks register.${RESET}"
     log ""
   fi
 }
@@ -620,6 +756,125 @@ install_agents() {
 # ---------------------------------------------------------------------------
 # Uninstall logic
 # ---------------------------------------------------------------------------
+
+REMOVED_COUNT=0
+
+uninstall_scattered() {
+  local cursor_dir="$1"
+  local agents_dir="${cursor_dir}/agents"
+  local rules_dir="${cursor_dir}/rules"
+  local commands_dir="${cursor_dir}/commands"
+  local hooks_dir="${cursor_dir}/hooks"
+  local skills_dir="${cursor_dir}/skills"
+  local removed=0
+  local file skill target
+
+  log "Removing agents from ${BOLD}${agents_dir}${RESET}"
+  log ""
+  for file in "${AGENT_FILES[@]}" "${LEGACY_AGENT_FILES[@]}" "${PROTOCOL_FILES[@]}" "${LEGACY_PROTOCOL_FILES[@]}"; do
+    target="${agents_dir}/${file}"
+    if [ -f "$target" ]; then
+      if [ "$DRY_RUN" = true ]; then
+        log "  ${RED}[remove]${RESET} ${file}"
+      else
+        rm -f "$target"
+        log "  ${RED}[removed]${RESET} ${file}"
+      fi
+      removed=$((removed + 1))
+    fi
+  done
+  if [ -d "${agents_dir}/protocols" ]; then
+    [ "$DRY_RUN" = false ] && rmdir "${agents_dir}/protocols" 2>/dev/null || true
+  fi
+
+  log ""
+  log "Removing commands from ${BOLD}${commands_dir}${RESET}"
+  log ""
+  for file in "${COMMAND_FILES[@]}"; do
+    target="${commands_dir}/${file}"
+    if [ -f "$target" ]; then
+      if [ "$DRY_RUN" = true ]; then
+        log "  ${RED}[remove]${RESET} ${file}"
+      else
+        rm -f "$target"
+        log "  ${RED}[removed]${RESET} ${file}"
+      fi
+      removed=$((removed + 1))
+    fi
+  done
+
+  log ""
+  log "Removing hooks from ${BOLD}${hooks_dir}${RESET}"
+  log ""
+  for file in post-edit-lint.sh pre-commit-check.sh guard-shell.sh hooks.json; do
+    target="${hooks_dir}/${file}"
+    if [ -f "$target" ]; then
+      if [ "$DRY_RUN" = true ]; then
+        log "  ${RED}[remove]${RESET} ${file}"
+      else
+        rm -f "$target"
+        log "  ${RED}[removed]${RESET} ${file}"
+      fi
+      removed=$((removed + 1))
+    fi
+  done
+
+  target="${cursor_dir}/hooks.json"
+  if [ -f "$target" ]; then
+    if [ "$DRY_RUN" = true ]; then
+      log "  ${RED}[remove]${RESET} hooks.json"
+    else
+      rm -f "$target"
+      log "  ${RED}[removed]${RESET} hooks.json"
+    fi
+    removed=$((removed + 1))
+  fi
+
+  target="${cursor_dir}/permissions.json"
+  if [ -f "$target" ]; then
+    if [ "$DRY_RUN" = true ]; then
+      log "  ${RED}[remove]${RESET} permissions.json"
+    else
+      rm -f "$target"
+      log "  ${RED}[removed]${RESET} permissions.json"
+    fi
+    removed=$((removed + 1))
+  fi
+
+  log ""
+  log "Removing rules from ${BOLD}${rules_dir}${RESET}"
+  log ""
+  for file in "${RULE_FILE}" "${RULE_FILE_DISABLED}"; do
+    target="${rules_dir}/${file}"
+    if [ -f "$target" ]; then
+      if [ "$DRY_RUN" = true ]; then
+        log "  ${RED}[remove]${RESET} ${file}"
+      else
+        rm -f "$target"
+        log "  ${RED}[removed]${RESET} ${file}"
+      fi
+      removed=$((removed + 1))
+    fi
+  done
+
+  log ""
+  log "Removing skills from ${BOLD}${skills_dir}${RESET}"
+  log ""
+  for skill in "${SKILL_DIRS[@]}"; do
+    target="${skills_dir}/${skill}"
+    if [ -d "$target" ]; then
+      if [ "$DRY_RUN" = true ]; then
+        log "  ${RED}[remove]${RESET} ${skill}/"
+      else
+        rm -rf "$target"
+        log "  ${RED}[removed]${RESET} ${skill}/"
+      fi
+      removed=$((removed + 1))
+    fi
+  done
+
+  REMOVED_COUNT=$removed
+}
 
 uninstall_agents() {
   log "${BOLD}oh-my-cursor${RESET} v${VERSION}"
@@ -632,90 +887,34 @@ uninstall_agents() {
   fi
 
   local removed=0
-  local file target
 
-  log "Removing agents from ${BOLD}${AGENTS_DIR}${RESET}"
-  log ""
-
-  for file in "${AGENT_FILES[@]}" "${LEGACY_AGENT_FILES[@]}"; do
-    target="${AGENTS_DIR}/${file}"
-    if [ -f "$target" ]; then
+  if [ "$SCOPE" = "user" ]; then
+    if [ -d "$PLUGIN_DIR" ] || [ -L "$PLUGIN_DIR" ]; then
+      log "Removing Cursor plugin from ${BOLD}${PLUGIN_DIR}${RESET}"
+      log ""
       if [ "$DRY_RUN" = true ]; then
-        log "  ${RED}[remove]${RESET} ${file}"
+        log "  ${RED}[remove]${RESET} ${PLUGIN_DIR}"
       else
-        rm -f "$target"
-        log "  ${RED}[removed]${RESET} ${file}"
+        rm -rf "$PLUGIN_DIR"
+        log "  ${RED}[removed]${RESET} ${PLUGIN_DIR}"
+        rmdir "${HOME}/.cursor/plugins/local" 2>/dev/null || true
+        rmdir "${HOME}/.cursor/plugins" 2>/dev/null || true
       fi
       removed=$((removed + 1))
+      log ""
     fi
-  done
-
-  for file in "${PROTOCOL_FILES[@]}" "${LEGACY_PROTOCOL_FILES[@]}"; do
-    target="${AGENTS_DIR}/${file}"
-    if [ -f "$target" ]; then
-      if [ "$DRY_RUN" = true ]; then
-        log "  ${RED}[remove]${RESET} ${file}"
-      else
-        rm -f "$target"
-        log "  ${RED}[removed]${RESET} ${file}"
-      fi
-      removed=$((removed + 1))
-    fi
-  done
-
-  if [ -d "${AGENTS_DIR}/protocols" ]; then
-    [ "$DRY_RUN" = false ] && rmdir "${AGENTS_DIR}/protocols" 2>/dev/null || true
+    log "Removing leftover v0.4 injection from ${BOLD}${HOME}/.cursor${RESET}"
+    log ""
+    uninstall_scattered "${HOME}/.cursor"
+    removed=$((removed + REMOVED_COUNT))
+  else
+    uninstall_scattered "$CURSOR_DIR"
+    removed=$((removed + REMOVED_COUNT))
   fi
 
-  log ""
-  log "Removing commands from ${BOLD}${COMMANDS_DIR}${RESET}"
-  log ""
-
-  for file in "${COMMAND_FILES[@]}"; do
-    target="${COMMANDS_DIR}/${file}"
-    if [ -f "$target" ]; then
-      if [ "$DRY_RUN" = true ]; then
-        log "  ${RED}[remove]${RESET} ${file}"
-      else
-        rm -f "$target"
-        log "  ${RED}[removed]${RESET} ${file}"
-      fi
-      removed=$((removed + 1))
-    fi
-  done
-
-  log ""
-  log "Removing hooks from ${BOLD}${HOOKS_DIR}${RESET}"
-  log ""
-
-  for file in "${HOOK_FILES[@]}"; do
-    target="${HOOKS_DIR}/${file}"
-    if [ -f "$target" ]; then
-      if [ "$DRY_RUN" = true ]; then
-        log "  ${RED}[remove]${RESET} ${file}"
-      else
-        rm -f "$target"
-        log "  ${RED}[removed]${RESET} ${file}"
-      fi
-      removed=$((removed + 1))
-    fi
-  done
-
-  for file in "${CONFIG_FILES[@]}"; do
-    target="${CURSOR_DIR}/${file}"
-    if [ -f "$target" ]; then
-      if [ "$DRY_RUN" = true ]; then
-        log "  ${RED}[remove]${RESET} ${file}"
-      else
-        rm -f "$target"
-        log "  ${RED}[removed]${RESET} ${file}"
-      fi
-      removed=$((removed + 1))
-    fi
-  done
-
   # Remove our git pre-commit hook (only if it's ours)
-  git_pc_dir="$(git rev-parse --absolute-git-dir 2>/dev/null)"
+  local git_pc_dir
+  git_pc_dir="$(git rev-parse --absolute-git-dir 2>/dev/null || true)"
   if [ -n "$git_pc_dir" ] && [ -f "${git_pc_dir}/hooks/pre-commit" ] && grep -q "oh-my-cursor" "${git_pc_dir}/hooks/pre-commit" 2>/dev/null; then
     if [ "$DRY_RUN" = true ]; then
       log "  ${RED}[remove]${RESET} git pre-commit hook"
@@ -725,50 +924,6 @@ uninstall_agents() {
     fi
     removed=$((removed + 1))
   fi
-
-  log ""
-  log "Removing rules from ${BOLD}${RULES_DIR}${RESET}"
-  log ""
-
-  target="${RULES_DIR}/${RULE_FILE}"
-  if [ -f "$target" ]; then
-    if [ "$DRY_RUN" = true ]; then
-      log "  ${RED}[remove]${RESET} ${RULE_FILE}"
-    else
-      rm -f "$target"
-      log "  ${RED}[removed]${RESET} ${RULE_FILE}"
-    fi
-    removed=$((removed + 1))
-  fi
-
-  target="${RULES_DIR}/${RULE_FILE_DISABLED}"
-  if [ -f "$target" ]; then
-    if [ "$DRY_RUN" = true ]; then
-      log "  ${RED}[remove]${RESET} ${RULE_FILE_DISABLED}"
-    else
-      rm -f "$target"
-      log "  ${RED}[removed]${RESET} ${RULE_FILE_DISABLED}"
-    fi
-    removed=$((removed + 1))
-  fi
-
-  log ""
-  log "Removing skills from ${BOLD}${SKILLS_DIR}${RESET}"
-  log ""
-
-  local skill skill_dir
-  for skill in "${SKILL_DIRS[@]}"; do
-    skill_dir="${SKILLS_DIR}/${skill}"
-    if [ -d "$skill_dir" ]; then
-      if [ "$DRY_RUN" = true ]; then
-        log "  ${RED}[remove]${RESET} ${skill}/"
-      else
-        rm -rf "$skill_dir"
-        log "  ${RED}[removed]${RESET} ${skill}/"
-      fi
-      removed=$((removed + 1))
-    fi
-  done
 
   log ""
   log "${BOLD}Summary${RESET}"
@@ -800,7 +955,6 @@ install_skills() {
     mkdir -p "$SKILLS_DIR"
   fi
 
-  local installed=0 skipped=0 updated=0
   local skill skill_src skill_dest
 
   for skill in "${SKILL_DIRS[@]}"; do
@@ -819,10 +973,8 @@ install_skills() {
         cp -r "$skill_src" "$skill_dest"
         log "  ${GREEN}[installed]${RESET} ${skill}/"
       fi
-      installed=$((installed + 1))
     elif diff -rq --exclude='.DS_Store' "$skill_src" "$skill_dest" >/dev/null 2>&1; then
       log "  ${DIM}[unchanged]${RESET} ${skill}/"
-      skipped=$((skipped + 1))
     elif [ "$FORCE" = true ]; then
       if [ "$DRY_RUN" = true ]; then
         log "  ${YELLOW}[update]${RESET} ${skill}/"
@@ -831,27 +983,12 @@ install_skills() {
         cp -r "$skill_src" "$skill_dest"
         log "  ${YELLOW}[updated]${RESET} ${skill}/"
       fi
-      updated=$((updated + 1))
     else
       log "  ${YELLOW}[skipped]${RESET} ${skill}/ ${DIM}(use --force to overwrite)${RESET}"
-      skipped=$((skipped + 1))
     fi
   done
 
   log ""
-
-  if [ -d "${HOME}/.agents/skills" ]; then
-    local legacy_count=0
-    for skill in "${SKILL_DIRS[@]}"; do
-      [ -d "${HOME}/.agents/skills/${skill}" ] && legacy_count=$((legacy_count + 1))
-    done
-    if [ "$legacy_count" -gt 0 ]; then
-      log "${DIM}Note: ${legacy_count} matching skill(s) found in ~/.agents/skills/ (legacy location).${RESET}"
-      log "${DIM}They show as 'Rules' in Cursor UI. The new installs in ~/.cursor/skills/ show as 'Skills'.${RESET}"
-      log "${DIM}You can safely delete ~/.agents/skills/ once verified.${RESET}"
-      log ""
-    fi
-  fi
 }
 
 # ---------------------------------------------------------------------------
@@ -894,7 +1031,7 @@ main() {
   log_verbose "Force: ${FORCE}"
 
   create_source_files "$WORK_DIR"
-  install_agents "$WORK_DIR"
+  install_agents
 
   if [ "$WITH_SKILLS" = true ]; then
     install_skills

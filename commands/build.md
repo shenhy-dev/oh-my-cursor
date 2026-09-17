@@ -1,3 +1,8 @@
+---
+name: build
+description: Deep multi-file implementation via Aang with exploration, execution, and verification
+---
+
 Use Aang (the deep executor agent) for this implementation task.
 
 1. **Explore** the relevant codebase areas to understand existing patterns and context.

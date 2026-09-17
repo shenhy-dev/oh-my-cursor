@@ -1,3 +1,8 @@
+---
+name: fix
+description: Methodical debugging and code healing via Katara
+---
+
 Use Katara (the healer agent) for methodical debugging and code healing.
 
 1. **Assess** the codebase state and identify the root cause (not symptoms).

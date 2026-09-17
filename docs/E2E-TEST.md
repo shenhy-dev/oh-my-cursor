@@ -61,9 +61,12 @@ Report:
       newer (e.g. **3.9.x**) the suites **are** the re-validation: Suite A catches model-slug
       changes, Suite B catches hook-schema changes. A newer version is **not** a precondition
       failure — proceed and let the suites tell you whether the new build broke anything.
-- [ ] oh-my-cursor installed **project-scoped** in this repo: `.cursor/agents/*.md`,
-      `.cursor/rules/orchestrator.mdc`, `.cursor/hooks.json`, `.cursor/hooks/*.sh`,
-      `.cursor/permissions.json` (or repo-root `permissions.json`) all present.
+- [ ] oh-my-cursor is installed for this test in **one** of these ways:
+      **project-scoped** in this repo (`.cursor/agents/*.md`, `.cursor/rules/orchestrator.mdc`,
+      `.cursor/hooks.json`, `.cursor/hooks/*.sh`, `.cursor/permissions.json`) via
+      `bash install.sh --project`, **or** the Cursor plugin is loaded
+      (`~/.cursor/plugins/local/oh-my-cursor` or Customize → oh-my-cursor) **and** project
+      hooks/`permissions.json` are present if you are running Suite B/C.
 - [ ] **Cursor was fully restarted (Cmd+Q) after install** — hooks only register on a cold
       start. You **cannot** confirm registration *before* running a command, so a missing
       `.cursor/hooks/last-invocation.log` is **not** a precondition failure — Suite B is the

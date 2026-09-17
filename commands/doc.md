@@ -1,3 +1,8 @@
+---
+name: doc
+description: Documentation generation and updates via Iroh
+---
+
 Use Iroh (the documentation specialist agent) for this task.
 
 1. **Read** the target documentation file in full before making any changes.
