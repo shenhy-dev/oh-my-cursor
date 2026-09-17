@@ -1,3 +1,18 @@
+> 本项目 fork 自 [tmcfarlane/oh-my-cursor](https://github.com/tmcfarlane/oh-my-cursor)，
+> 原项目采用 MIT 许可证，版权归原作者所有。
+> 本 fork 的改动内容：\n
+>  1. 优化oh-my-cursor已经不适配curosr的部分
+>  2. 修改安装方式，改成plugin的安装模式
+>  3. 优化windows系统上的体验
+## Plugins
+**macOS / Linux / Windows :**
+
+```bash
+git clone https://github.com/shenhy-dev/oh-my-cursor.git
+```
+在 cursor IDE 的“Customize”选项中，点击“Browse Marketplace”，然后通过“Add Marketplace”来添加相应的市场。接着选择“Import from Disk”，并指定相应的目录。
+
+---------------------------------------------------------------------------------
 <div align="center">
 
 <div style="font-size: 2.0em; font-weight: 800; line-height: 1.1;">
