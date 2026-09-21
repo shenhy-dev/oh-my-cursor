@@ -27,6 +27,18 @@ function isRunnable(file, platform) {
   }
 }
 
+/** True when `a` and `b` are the same directory (Windows: case, slash, `\\?\`). */
+function sameDir(a, b, platform) {
+  if (a === b) return true;
+  if (platform !== 'win32') return false;
+  const fold = (s) => String(s)
+    .replace(/^\\\\\?\\/i, '')
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+  return fold(a) === fold(b);
+}
+
 /**
  * Resolve a binary from PATH only (absolute dirs, never cwd / `.`).
  * Windows prefers `.exe` then `.cmd`/`.bat` so native tools skip cmd.exe.
@@ -60,7 +72,7 @@ function which(bin, opts) {
       } catch {
         continue;
       }
-      if (absDir === cwd) continue;
+      if (sameDir(absDir, cwd, platform)) continue;
       const candidate = path.join(absDir, name);
       if (isRunnable(candidate, platform)) return candidate;
     }
@@ -181,6 +193,7 @@ module.exports = {
   unsafeForCmd,
   cmdSpawnArgs,
   cmdExecutable,
+  sameDir,
 };
 
 if (require.main === module) {

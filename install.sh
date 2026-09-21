@@ -11,6 +11,7 @@ AGENT_FILES=(aang.md sokka.md katara.md zuko.md toph.md appa.md momo.md iroh.md)
 PROTOCOL_FILES=(protocols/team-avatar.md)
 COMMAND_FILES=(plan.md build.md search.md fix.md tasks.md scout.md cactus-juice.md doc.md image.md)
 HOOK_FILES=(post-edit-lint.js pre-commit-check.js guard-shell.js hooks.json)
+HOOK_SCRIPT_FILES=(post-edit-lint.js pre-commit-check.js guard-shell.js)
 LEGACY_HOOK_FILES=(post-edit-lint.sh pre-commit-check.sh guard-shell.sh)
 PLUGIN_MANIFEST_FILES=(plugin.json marketplace.json)
 RULE_FILE="orchestrator.mdc"
@@ -658,7 +659,12 @@ install_cursor_plugin() {
   install_file_set "${WORK_DIR}/agents" "${dest}/agents" "agents" "${AGENT_FILES[@]}"
   install_file_set "${WORK_DIR}/agents" "${dest}/agents" "protocols" "${PROTOCOL_FILES[@]}"
   install_file_set "${WORK_DIR}/commands" "${dest}/commands" "commands" "${COMMAND_FILES[@]}"
-  install_file_set "${WORK_DIR}/hooks" "${dest}/hooks" "hooks" "${HOOK_FILES[@]}"
+  install_file_set "${WORK_DIR}/hooks" "${dest}/hooks" "hook scripts" "${HOOK_SCRIPT_FILES[@]}"
+  # Always refresh hooks.json so leftover bash commands cannot outlive deleted .sh files.
+  local was_force="$FORCE"
+  FORCE=true
+  install_file_set "${WORK_DIR}/hooks" "${dest}/hooks" "hooks.json" hooks.json
+  FORCE="$was_force"
   for file in "${LEGACY_HOOK_FILES[@]}"; do
     remove_path "${dest}/hooks/${file}" "hooks/${file}" || true
   done

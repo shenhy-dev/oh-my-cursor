@@ -714,7 +714,9 @@ function Install-CursorPlugin {
     Install-FileSet -SrcDir (Join-Path $WorkDir 'agents') -DestDir (Join-Path $Dest 'agents') -Label 'agents' -Files $AGENT_FILES -IsForce $IsForce -IsDryRun $IsDryRun
     Install-FileSet -SrcDir (Join-Path $WorkDir 'agents') -DestDir (Join-Path $Dest 'agents') -Label 'protocols' -Files $PROTOCOL_FILES -IsForce $IsForce -IsDryRun $IsDryRun
     Install-FileSet -SrcDir (Join-Path $WorkDir 'commands') -DestDir (Join-Path $Dest 'commands') -Label 'commands' -Files $COMMAND_FILES -IsForce $IsForce -IsDryRun $IsDryRun
-    Install-FileSet -SrcDir (Join-Path $WorkDir 'hooks') -DestDir (Join-Path $Dest 'hooks') -Label 'hooks' -Files $HOOK_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'hooks') -DestDir (Join-Path $Dest 'hooks') -Label 'hook scripts' -Files $HOOK_SCRIPT_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    # Always refresh hooks.json so leftover bash commands cannot outlive deleted .sh files.
+    Install-FileSet -SrcDir (Join-Path $WorkDir 'hooks') -DestDir (Join-Path $Dest 'hooks') -Label 'hooks.json' -Files @('hooks.json') -IsForce $true -IsDryRun $IsDryRun
     foreach ($file in $LEGACY_HOOK_FILES) {
         Remove-PathIfPresent -Target (Join-Path (Join-Path $Dest 'hooks') $file) -Label "hooks/${file}" -IsDryRun $IsDryRun | Out-Null
     }

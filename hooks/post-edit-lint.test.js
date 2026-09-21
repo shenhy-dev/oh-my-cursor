@@ -12,6 +12,7 @@ const {
   unsafeForCmd,
   cmdSpawnArgs,
   cmdExecutable,
+  sameDir,
 } = require('./post-edit-lint.js');
 
 function afterCmdSStrip(wrapped) {
@@ -107,6 +108,19 @@ try {
     cwd: trap,
   });
   assert.strictEqual(dottedPath, path.join(safe, 'npx.cmd'));
+
+  assert.ok(sameDir('C:\\Users\\Foo\\proj', 'c:\\users\\foo\\proj', 'win32'));
+  assert.ok(sameDir('C:/proj/', 'c:\\proj', 'win32'));
+  assert.ok(sameDir('\\\\?\\C:\\proj', 'C:\\proj', 'win32'));
+  assert.ok(!sameDir('C:\\proj', 'C:\\other', 'win32'));
+  assert.ok(!sameDir('/tmp/a', '/tmp/b', 'linux'));
+
+  const mixedCaseCwd = which('npx', {
+    platform: 'win32',
+    pathEnv: `${trap.toUpperCase()};${safe}`,
+    cwd: trap,
+  });
+  assert.strictEqual(mixedCaseCwd, path.join(safe, 'npx.cmd'));
 
   fs.writeFileSync(path.join(safe, 'npx.exe'), 'good-exe');
   const preferExe = which('npx', {

@@ -25,7 +25,11 @@ All notable changes to oh-my-cursor are documented here. Format follows
 - `afterFileEdit` lint resolves binaries from absolute PATH dirs only (never cwd /
   `where`), prefers `.exe`, and runs `.cmd`/`.bat` via `%SystemRoot%\\System32\\cmd.exe`
   `/d /s /v:off /c` with quoted argv (no `shell: true`). Names with `%`/`!`/`&` are
-  not passed through cmd (BatBadBut). `Program Files` stays quoted.
+  not passed through cmd (BatBadBut). `Program Files` stays quoted. Windows PATH
+  entries that are the workspace are skipped even when casing / slashes differ.
+- Plugin install always rewrites `hooks.json` before removing leftover `hooks/*.sh`,
+  so a no-`--force` upgrade from 0.5.1 cannot keep bash commands that point at
+  deleted files.
 
 ## [0.5.1] — 2026-09-21
 
