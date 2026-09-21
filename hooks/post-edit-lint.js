@@ -15,14 +15,54 @@ function readStdin() {
   }
 }
 
-function which(bin) {
-  const cmd = process.platform === 'win32' ? 'where' : 'which';
-  // Prefer .exe so native tools skip cmd.exe; .cmd/.bat still need a quoted /c line.
-  const names = process.platform === 'win32' ? [`${bin}.exe`, `${bin}.cmd`, bin] : [bin];
+function isRunnable(file, platform) {
+  try {
+    const st = fs.statSync(file);
+    if (!st.isFile()) return false;
+    if (platform === 'win32') return true;
+    fs.accessSync(file, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve a binary from PATH only (absolute dirs, never cwd / `.`).
+ * Windows prefers `.exe` then `.cmd`/`.bat` so native tools skip cmd.exe.
+ */
+function which(bin, opts) {
+  const o = opts || {};
+  const platform = o.platform || process.platform;
+  const envPath = o.pathEnv != null ? o.pathEnv : process.env.PATH || '';
+  const cwd = path.resolve(o.cwd || process.cwd());
+  const sep = platform === 'win32' ? ';' : ':';
+  const names = platform === 'win32' ? [`${bin}.exe`, `${bin}.cmd`, `${bin}.bat`, bin] : [bin];
+
+  const dirs = envPath.split(sep).map((d) => {
+    let s = String(d).trim();
+    if (
+      (s.startsWith('"') && s.endsWith('"') && s.length >= 2) ||
+      (s.startsWith("'") && s.endsWith("'") && s.length >= 2)
+    ) {
+      s = s.slice(1, -1);
+    }
+    return s;
+  }).filter(Boolean);
+
   for (const name of names) {
-    const r = spawnSync(cmd, [name], { encoding: 'utf8' });
-    if (r.status === 0 && r.stdout && r.stdout.trim()) {
-      return r.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || name;
+    for (const dir of dirs) {
+      if (dir === '.' || dir === './' || dir === '.\\') continue;
+      if (!path.isAbsolute(dir)) continue;
+      let absDir;
+      try {
+        absDir = path.resolve(dir);
+      } catch {
+        continue;
+      }
+      if (absDir === cwd) continue;
+      const candidate = path.join(absDir, name);
+      if (isRunnable(candidate, platform)) return candidate;
     }
   }
   return null;
@@ -32,7 +72,7 @@ function which(bin) {
 function quoteWinArg(arg) {
   const s = String(arg);
   if (s.length === 0) return '""';
-  if (!/[\s"&|<>()^%]/.test(s)) return s;
+  if (!/[\s"&|<>()^%!]/.test(s)) return s;
   return `"${s.replace(/"/g, '""')}"`;
 }
 
@@ -45,18 +85,45 @@ function winCmdLine(bin, args) {
   return `"${line}"`;
 }
 
-function run(bin, args) {
-  const resolved = which(bin);
+/** `%`/`!` expand inside quotes; `&|<>^` are cmd operators if quotes break. */
+function unsafeForCmd(s) {
+  return /[%!&|<>^\r\n\0]/.test(String(s));
+}
+
+function cmdSpawnArgs(resolved, args) {
+  if ([resolved, ...args].some(unsafeForCmd)) return null;
+  return ['/d', '/s', '/v:off', '/c', winCmdLine(resolved, args)];
+}
+
+function cmdExecutable(env) {
+  const e = env || process.env;
+  const root = e.SystemRoot || e.WINDIR;
+  if (root) {
+    const candidate = path.join(root, 'System32', 'cmd.exe');
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch {
+      /* fall through */
+    }
+  }
+  if (e.ComSpec && path.isAbsolute(e.ComSpec)) return e.ComSpec;
+  return null;
+}
+
+function run(bin, args, opts) {
+  const resolved = which(bin, opts);
   if (!resolved) return;
-  const opts = { stdio: 'inherit', encoding: 'utf8', windowsHide: true };
-  if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved)) {
-    spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', winCmdLine(resolved, args)], {
-      ...opts,
-      windowsVerbatimArguments: true,
-    });
+  const spawnOpts = { stdio: 'inherit', encoding: 'utf8', windowsHide: true };
+  const platform = (opts && opts.platform) || process.platform;
+  if (platform === 'win32' && /\.(cmd|bat)$/i.test(resolved)) {
+    const argv = cmdSpawnArgs(resolved, args);
+    if (!argv) return;
+    const cmd = cmdExecutable((opts && opts.env) || process.env);
+    if (!cmd) return;
+    spawnSync(cmd, argv, { ...spawnOpts, windowsVerbatimArguments: true });
     return;
   }
-  spawnSync(resolved, args, opts);
+  spawnSync(resolved, args, spawnOpts);
 }
 
 function main() {
@@ -106,7 +173,15 @@ function main() {
   process.exit(0);
 }
 
-module.exports = { quoteWinArg, winCmdLine, which, run };
+module.exports = {
+  quoteWinArg,
+  winCmdLine,
+  which,
+  run,
+  unsafeForCmd,
+  cmdSpawnArgs,
+  cmdExecutable,
+};
 
 if (require.main === module) {
   main();
