@@ -64,22 +64,7 @@ Use for ANY technical issue:
 - You're in a hurry (rushing guarantees rework)
 - Manager wants it fixed NOW (systematic is faster than thrashing)
 
-## When to Use: debugging vs smart-debug
-
-| Scenario                             | Use `debugging` | Use `smart-debug` |
-| ------------------------------------ | --------------- | ----------------- |
-| Simple, locally reproducible bug     | Yes             | Overkill          |
-| Root cause area already known        | Yes             | Optional          |
-| Static analysis / code review bug    | Yes             | No                |
-| Runtime / production issue           | Start here      | Preferred         |
-| Intermittent / hard-to-reproduce     | Escalate        | Yes               |
-| Needs hypothesis ranking gate        | No              | Yes (blocking)    |
-| Needs instrumentation + log analysis | No              | Yes               |
-| Observability-driven (traces, APM)   | No              | Yes               |
-
-**Rule of thumb**: Start with `debugging` for straightforward bugs. Escalate to `smart-debug` when you need hypothesis ranking, structured instrumentation, or the bug is intermittent/production-only.
-
-**See also**: `.claude/skills/smart-debug/SKILL.md`
+Use this skill for all of the above, including intermittent bugs, hypothesis ranking, structured instrumentation, and observability-driven (traces, APM) work. Stay in the four-phase process — do not switch to a separate debug skill.
 
 ## The Four Phases
 
@@ -160,7 +145,7 @@ You MUST complete each phase before proceeding to the next.
    **Fragmented traces** (each service has its own root span, trace IDs don't match across boundaries)
    = broken context propagation. Fix `traceparent`/`tracestate` header forwarding before investigating business logic.
 
-   > **Instrumentation Gate (before hypothesis generation):** If runtime behavior remains unclear after static analysis, add targeted log statements at key decision nodes before generating hypotheses. Use session-scoped log files (`.claude/context/tmp/debug-{sessionId}.log`) to capture runtime state. Human-in-the-loop: ask the user to reproduce the bug after instrumentation is added, before analyzing results. Only proceed to Phase 2 once runtime evidence is collected.
+   > **Instrumentation Gate (before hypothesis generation):** If runtime behavior remains unclear after static analysis, add targeted log statements at key decision nodes before generating hypotheses. Write session-scoped evidence to a temp log in the workspace (for example `debug-{sessionId}.log`) and delete it when done. Human-in-the-loop: ask the user to reproduce the bug after instrumentation is added, before analyzing results. Only proceed to Phase 2 once runtime evidence is collected.
 
 5. **Trace Data Flow**
 
@@ -344,7 +329,7 @@ These techniques are part of systematic debugging and available in this director
 - **`root-cause-tracing.md`** - Trace bugs backward through call stack to find original trigger
 - **`defense-in-depth.md`** - Add validation at multiple layers after finding root cause
 - **`condition-based-waiting.md`** - Replace arbitrary timeouts with condition polling
-- **find-polluter** - For test pollution bisection (flaky tests due to shared state): run `.claude/tools/analysis/find-polluter/find-polluter.sh` (or `find-polluter.ps1` on Windows) from the project root to isolate which test pollutes the suite.
+- **Test pollution** - For flaky tests caused by shared state, bisect the suite (run halves until one test is shown to pollute later tests).
 
 **Related skills:**
 
@@ -399,16 +384,3 @@ LLM-based debugging agents (2025 pattern) augment Phase 1 by reading production 
 | Proposing AI-suggested fixes without testing | AI suggestions are hypotheses, not facts; applying them blindly skips Phase 3     | Treat AI suggestions as hypotheses to test, not answers to implement |
 | Attempting a 4th fix after 3 failures        | N+1 fix attempts on a broken approach compound the problem                        | After 3 failed fixes, escalate to architecture review                |
 | Skipping the failing test before the fix     | You can't verify the fix worked, and regressions are invisible                    | Create the failing test first; it proves root cause and verifies fix |
-
-## Memory Protocol (MANDATORY)
-
-**Before starting:**
-Read `.claude/context/memory/learnings.md`
-
-**After completing:**
-
-- New pattern -> `.claude/context/memory/learnings.md`
-- Issue found -> `.claude/context/memory/issues.md`
-- Decision made -> `.claude/context/memory/decisions.md`
-
-> ASSUME INTERRUPTION: If it's not in memory, it didn't happen.

@@ -32,8 +32,9 @@ When no plan exists and the task demands design choices, you decide the approach
 
 - **Tier 1 Coordinator**: You CAN spawn worker subagents via the `Task` tool
 - **Allowed workers**: `toph`, `momo`
-- Follow the Team Avatar Protocol (`protocols/team-avatar.md`) for all delegation decisions
-- **Depth guard**: NEVER spawn coordinators (`aang`, `sokka`, `katara`, `appa`). Only `toph` and `momo`.
+- **Depth guard**: NEVER spawn coordinators (`aang`, `sokka`, `katara`, `appa`). NEVER spawn `zuko` — root thread only. Only `toph` and `momo`.
+- **Default**: do the work yourself unless delegation clearly saves time or enables parallelism.
+- Every `Task` prompt MUST include all 6 sections: TASK, EXPECTED OUTCOME, REQUIRED TOOLS, MUST DO, MUST NOT DO, CONTEXT.
 
 ## Success Criteria
 

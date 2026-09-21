@@ -9,6 +9,22 @@ All notable changes to oh-my-cursor are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-21
+
+### Fixed
+- **Plugin hooks resolve after load.** `hooks/hooks.json` now runs
+  `bash "${CURSOR_PLUGIN_ROOT}/hooks/..."`. Plugin hook cwd is often the workspace, so
+  `./hooks/*.sh` could not be found; GitHub import also lands under
+  `~/.cursor/plugins/cache/`, not a hard-coded `plugins/local` path. Project-scope
+  `--project` still writes `.cursor/hooks.json` with `.cursor/hooks/...`.
+- **Instruction paths no longer assume the repo checkout.** Aang no longer points at
+  `protocols/team-avatar.md`; `/image` refers to the `cursor-image-generation` skill by
+  name; the orchestrator Model Policy link is a GitHub URL instead of `../README.md`.
+- **Bundled skills drop missing/foreign paths.** `docs-write` no longer includes a
+  missing `_shared/` file; `exploring-codebases` no longer calls Claude Code
+  `/mnt/skills` scripts; `debugging` no longer references `.claude/` skills, tools, or
+  memory files.
+
 ## [0.5.0] — 2026-09-17
 
 **Distribution change:** Cursor Plugin (`~/.cursor/plugins/local/oh-my-cursor`)
@@ -130,6 +146,7 @@ Validated model refresh for the current Cursor roster, verified live on **Cursor
 - Removed `is_background` from Toph for reliable output handoff.
 - 8 agents, 9 slash commands, orchestrator rule, hooks, and bundled skills.
 
+[0.5.1]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.5.1
 [0.5.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.4.0
 [0.3.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.3.0

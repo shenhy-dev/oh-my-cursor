@@ -6,8 +6,6 @@ allowed-tools: Read, Write, Grep, Bash, Glob
 
 # Documentation Writing Skill
 
-@./../_shared/metabase-style-guide.md
-
 ## When writing documentation
 
 ### Start here
