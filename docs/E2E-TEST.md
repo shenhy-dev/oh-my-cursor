@@ -63,7 +63,7 @@ Report:
       failure — proceed and let the suites tell you whether the new build broke anything.
 - [ ] oh-my-cursor is installed for this test in **one** of these ways:
       **project-scoped** in this repo (`.cursor/agents/*.md`, `.cursor/rules/orchestrator.mdc`,
-      `.cursor/hooks.json`, `.cursor/hooks/*.sh`, `.cursor/permissions.json`) via
+      `.cursor/hooks.json`, `.cursor/hooks/*.js`, `.cursor/permissions.json`) via
       `bash install.sh --project`, **or** the Cursor plugin is loaded
       (`~/.cursor/plugins/local/oh-my-cursor` or Customize → oh-my-cursor) **and** project
       hooks/`permissions.json` are present if you are running Suite B/C.
@@ -169,7 +169,7 @@ Report verbatim whether the commit succeeds or is blocked.
 
 - **Expected:** the `afterFileEdit` hook fires on the write (a lint note may appear), and the
   `git commit` is **blocked** because the staged `.ts` contains `as any`
-  (`pre-commit-check.sh` → guard denies). The commit does **not** land.
+  (`pre-commit-check.js` → guard denies). The commit does **not** land.
 - *If it slips:* you're on the `omc-e2e-sandbox` branch and will discard it in Cleanup → no
   harm. Record FAIL.
 
@@ -290,8 +290,8 @@ rm -f .cursor/hooks/last-invocation.log
   project-scoped, or `python3`/`jq` aren't on the GUI app's PATH (the guard has a perl
   fallback, but verify `.cursor/hooks/last-invocation.log` shows invocations).
 - **The `as any` commit landed** → the guard's `git commit` branch didn't run, or `bash`
-  isn't on the hook PATH. Confirm project hooks use `bash .cursor/hooks/...` in
-  `.cursor/hooks.json`, and plugin hooks use `bash "${CURSOR_PLUGIN_ROOT}/hooks/..."`.
+  isn't on the hook PATH. Confirm project hooks use `node .cursor/hooks/...` in
+  `.cursor/hooks.json`, and plugin hooks use `node "${CURSOR_PLUGIN_ROOT}/hooks/..."`.
 - **A risky call auto-ran with no prompt** → auto-review isn't reading `permissions.json`;
   re-check Settings → Agents → Approvals & Execution and that the file is at the path Cursor
   expects for this scope.

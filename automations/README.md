@@ -22,7 +22,7 @@ Event-driven Team Avatar dispatches — *"PR review comment → Katara fixes it"
    recipes are self-contained, and where they reference repo files they do so **by explicit
    path** (e.g. "read `rules/orchestrator.mdc`").
 3. **Hooks likely don't apply to cloud automation runs.** oh-my-cursor's hook guardrails
-   (`guard-shell.sh`, etc.) install under the gitignored `.cursor/`, so a cloud sandbox won't
+   (`guard-shell.js`, etc.) install under the gitignored `.cursor/`, so a cloud sandbox won't
    have them. *(Strong inference, not a documented guarantee — verify before relying on it.)*
    Treat automation prompts as the safety boundary: scope them tightly and avoid destructive
    instructions.

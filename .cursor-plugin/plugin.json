@@ -1,7 +1,7 @@
 {
   "name": "oh-my-cursor",
   "displayName": "Team Avatar",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Team Avatar: Multi-agent orchestration for Cursor with ATLA-themed agents, slash commands, hooks, and tiered model routing.",
   "author": {
     "name": "ZeroClickDev"

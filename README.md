@@ -41,6 +41,11 @@ _Created by <a href="https://zeroclickdev.ai/">ZeroClickDev</a>_
 
 </div>
 
+> **v0.5.2 — Node.js hooks** (September 2026): plugin hooks run via `node` (`guard-shell.js`,
+> `post-edit-lint.js`) so Windows and macOS share one implementation — no bash/WSL path
+> conversion. `${CURSOR_PLUGIN_ROOT}` still locates the plugin; project-scope `--project`
+> uses `node .cursor/hooks/...`.
+>
 > **v0.5.1 — Plugin hook paths** (September 2026): plugin `hooks/hooks.json` invokes scripts via
 > `${CURSOR_PLUGIN_ROOT}` so Cursor can find them after plugin load (cwd is often the workspace,
 > not the plugin directory). Project-scope `--project` still uses `.cursor/hooks/...`.
@@ -446,15 +451,15 @@ Two-tier swarm: **Coordinators** (Aang, Sokka, Katara, Appa) spawn **Workers** (
 
 System-level enforcement that doesn't rely on agents remembering to verify. Wired through
 Cursor's [hooks](https://cursor.com/docs/hooks) system. The plugin ships
-**`hooks/hooks.json`** with `${CURSOR_PLUGIN_ROOT}/hooks/...` so scripts resolve from the
-plugin install directory (local copy or marketplace cache), not the workspace cwd. A
-project-scope install writes **`.cursor/hooks.json`** with workspace-relative
-`.cursor/hooks/...` paths so [cloud agents](https://cursor.com/docs/hooks) can run the
-same guards.
+**`hooks/hooks.json`** with `node "${CURSOR_PLUGIN_ROOT}/hooks/*.js"` so scripts resolve from
+the plugin install directory (local copy or marketplace cache) using Node on Windows and
+macOS — no bash/WSL. A project-scope install writes **`.cursor/hooks.json`** with
+`node .cursor/hooks/...` so [cloud agents](https://cursor.com/docs/hooks) can run the same
+guards.
 
 Each hook is a script that receives a JSON payload on stdin and (for `beforeShellExecution`)
-returns an allow/deny/ask decision. Commands are invoked as `bash <script>` so they do not
-depend on the shebang or the executable bit.
+returns an allow/deny/ask decision. Commands are invoked as `node <script>` so they do not
+depend on bash, WSL, the shebang, or the executable bit.
 
 > **User-scope hooks** come with the plugin (`install.sh`, default). **Project / cloud-agent
 > hooks** still need **`install.sh --project`** inside the repo. After a project install,
@@ -463,11 +468,11 @@ depend on the shebang or the executable bit.
 
 | Hook handler          | Event                  | Purpose                                                                         |
 | --------------------- | ---------------------- | ------------------------------------------------------------------------------- |
-| `guard-shell.sh`      | `beforeShellExecution` | **Blocks** destructive commands (`rm -rf /`, force-push to `main`, hard reset of shared branches) and commits containing forbidden anti-patterns (`as any`, `@ts-ignore`, empty catches) |
-| `post-edit-lint.sh`   | `afterFileEdit`        | Runs lints on the edited file (informational — surfaces issues immediately)     |
-| `pre-commit-check.sh` | (library)              | Anti-pattern checker invoked by `guard-shell.sh`; also usable as a git pre-commit hook |
+| `guard-shell.js`      | `beforeShellExecution` | **Blocks** destructive commands (`rm -rf /`, force-push to `main`, hard reset of shared branches) and commits containing forbidden anti-patterns (`as any`, `@ts-ignore`, empty catches) |
+| `post-edit-lint.js`   | `afterFileEdit`        | Runs lints on the edited file (informational — surfaces issues immediately)     |
+| `pre-commit-check.js` | (library)              | Anti-pattern checker invoked by `guard-shell.js`; also usable as a git pre-commit hook |
 
-**Observe mode:** set `OMC_HOOKS_OBSERVE=1` to run `guard-shell.sh` non-blocking — it logs
+**Observe mode:** set `OMC_HOOKS_OBSERVE=1` to run `guard-shell.js` non-blocking — it logs
 what it *would* block without denying. Use this to validate hooks on your build before
 trusting them to block.
 

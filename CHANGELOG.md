@@ -9,6 +9,28 @@ All notable changes to oh-my-cursor are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-09-21
+
+### Changed
+- **Plugin hooks are Node.js.** `hooks/hooks.json` runs
+  `node "${CURSOR_PLUGIN_ROOT}/hooks/{guard-shell,post-edit-lint}.js"` so Windows and
+  macOS share one implementation without bash/WSL. Project-scope `--project` writes
+  `node .cursor/hooks/...`. Git pre-commit calls `pre-commit-check.js`. Leftover
+  `hooks/*.sh` files are removed on install/uninstall.
+
+### Fixed
+- Credential hold matches Windows paths (`C:\\Users\\...\\.ssh\\`,
+  `$env:USERPROFILE\\.aws\\`) by normalizing `\\` to `/` before needle checks.
+- Hook stdin JSON strips a UTF-8 BOM so Windows payloads still parse (deny, not ask).
+- `afterFileEdit` lint resolves binaries from absolute PATH dirs only (never cwd /
+  `where`), prefers `.exe`, and runs `.cmd`/`.bat` via `%SystemRoot%\\System32\\cmd.exe`
+  `/d /s /v:off /c` with quoted argv (no `shell: true`). Names with `%`/`!`/`&` are
+  not passed through cmd (BatBadBut). `Program Files` stays quoted. Windows PATH
+  entries that are the workspace are skipped even when casing / slashes differ.
+- Plugin install always rewrites `hooks.json` before removing leftover `hooks/*.sh`,
+  so a no-`--force` upgrade from 0.5.1 cannot keep bash commands that point at
+  deleted files.
+
 ## [0.5.1] — 2026-09-21
 
 ### Fixed
@@ -146,6 +168,7 @@ Validated model refresh for the current Cursor roster, verified live on **Cursor
 - Removed `is_background` from Toph for reliable output handoff.
 - 8 agents, 9 slash commands, orchestrator rule, hooks, and bundled skills.
 
+[0.5.2]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.5.2
 [0.5.1]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.5.1
 [0.5.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.5.0
 [0.4.0]: https://github.com/tmcfarlane/oh-my-cursor/releases/tag/v0.4.0
