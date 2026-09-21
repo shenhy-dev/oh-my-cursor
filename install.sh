@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-VERSION="0.5.0"
+VERSION="0.5.1"
 CURSOR_MODE_LABEL="Team Avatar (Cursor Plugin)"
 PLUGIN_NAME="oh-my-cursor"
 

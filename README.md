@@ -41,6 +41,10 @@ _Created by <a href="https://zeroclickdev.ai/">ZeroClickDev</a>_
 
 </div>
 
+> **v0.5.1 — Plugin hook paths** (September 2026): plugin `hooks/hooks.json` invokes scripts via
+> `${CURSOR_PLUGIN_ROOT}` so Cursor can find them after plugin load (cwd is often the workspace,
+> not the plugin directory). Project-scope `--project` still uses `.cursor/hooks/...`.
+>
 > **v0.5.0 — Cursor Plugin** (September 2026): Team Avatar ships as a [Cursor Plugin](https://cursor.com/docs/plugins)
 > (`~/.cursor/plugins/local/oh-my-cursor`) instead of scattering files into `~/.cursor/rules` and
 > `~/.cursor/hooks`. Re-run the installer to migrate; leftover v0.4 injection files are removed.
@@ -442,9 +446,11 @@ Two-tier swarm: **Coordinators** (Aang, Sokka, Katara, Appa) spawn **Workers** (
 
 System-level enforcement that doesn't rely on agents remembering to verify. Wired through
 Cursor's [hooks](https://cursor.com/docs/hooks) system. The plugin ships
-**`hooks/hooks.json`** (paths relative to the plugin root). A project-scope install writes
-**`.cursor/hooks.json`** with workspace-relative paths so [cloud agents](https://cursor.com/docs/hooks)
-can run the same guards.
+**`hooks/hooks.json`** with `${CURSOR_PLUGIN_ROOT}/hooks/...` so scripts resolve from the
+plugin install directory (local copy or marketplace cache), not the workspace cwd. A
+project-scope install writes **`.cursor/hooks.json`** with workspace-relative
+`.cursor/hooks/...` paths so [cloud agents](https://cursor.com/docs/hooks) can run the
+same guards.
 
 Each hook is a script that receives a JSON payload on stdin and (for `beforeShellExecution`)
 returns an allow/deny/ask decision. Commands are invoked as `bash <script>` so they do not

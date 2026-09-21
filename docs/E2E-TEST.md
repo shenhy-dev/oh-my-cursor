@@ -290,7 +290,8 @@ rm -f .cursor/hooks/last-invocation.log
   project-scoped, or `python3`/`jq` aren't on the GUI app's PATH (the guard has a perl
   fallback, but verify `.cursor/hooks/last-invocation.log` shows invocations).
 - **The `as any` commit landed** → the guard's `git commit` branch didn't run, or `bash`
-  isn't on the hook PATH; confirm `.cursor/hooks.json` uses `bash .cursor/hooks/...`.
+  isn't on the hook PATH. Confirm project hooks use `bash .cursor/hooks/...` in
+  `.cursor/hooks.json`, and plugin hooks use `bash "${CURSOR_PLUGIN_ROOT}/hooks/..."`.
 - **A risky call auto-ran with no prompt** → auto-review isn't reading `permissions.json`;
   re-check Settings → Agents → Approvals & Execution and that the file is at the path Cursor
   expects for this scope.

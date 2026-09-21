@@ -2,10 +2,10 @@
   "version": 1,
   "hooks": {
     "beforeShellExecution": [
-      { "command": "bash ./hooks/guard-shell.sh", "failClosed": true }
+      { "command": "bash \"${CURSOR_PLUGIN_ROOT}/hooks/guard-shell.sh\"", "failClosed": true }
     ],
     "afterFileEdit": [
-      { "command": "bash ./hooks/post-edit-lint.sh" }
+      { "command": "bash \"${CURSOR_PLUGIN_ROOT}/hooks/post-edit-lint.sh\"" }
     ]
   }
 }
