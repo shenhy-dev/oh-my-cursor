@@ -22,7 +22,9 @@ All notable changes to oh-my-cursor are documented here. Format follows
 - Credential hold matches Windows paths (`C:\\Users\\...\\.ssh\\`,
   `$env:USERPROFILE\\.aws\\`) by normalizing `\\` to `/` before needle checks.
 - Hook stdin JSON strips a UTF-8 BOM so Windows payloads still parse (deny, not ask).
-- `afterFileEdit` lint resolves `npx.cmd` / `.exe` on Windows (`shell: true` only for `.cmd`/`.bat`).
+- `afterFileEdit` lint resolves `npx.exe` before `npx.cmd`. `.cmd`/`.bat` run via
+  `cmd.exe /d /s /c` with quoted argv (no `shell: true`), so `Program Files` and
+  `&` in `file_path` stay literal.
 
 ## [0.5.1] — 2026-09-21
 
