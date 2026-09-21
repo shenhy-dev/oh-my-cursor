@@ -291,7 +291,8 @@ rm -f .cursor/hooks/last-invocation.log
   fallback, but verify `.cursor/hooks/last-invocation.log` shows invocations).
 - **The `as any` commit landed** → the guard's `git commit` branch didn't run, or `bash`
   isn't on the hook PATH. Confirm project hooks use `bash .cursor/hooks/...` in
-  `.cursor/hooks.json`, and plugin hooks use `bash "${CURSOR_PLUGIN_ROOT}/hooks/..."`.
+  `.cursor/hooks.json`, and plugin hooks convert `${CURSOR_PLUGIN_ROOT}` (WSL:
+  `/mnt/<drive>/...`) before invoking `hooks/*.sh`.
 - **A risky call auto-ran with no prompt** → auto-review isn't reading `permissions.json`;
   re-check Settings → Agents → Approvals & Execution and that the file is at the path Cursor
   expects for this scope.

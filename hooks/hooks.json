@@ -2,10 +2,15 @@
   "version": 1,
   "hooks": {
     "beforeShellExecution": [
-      { "command": "bash \"${CURSOR_PLUGIN_ROOT}/hooks/guard-shell.sh\"", "failClosed": true }
+      {
+        "command": "bash -c 'r=$1; case $r in [A-Za-z]:*) if command -v wslpath >/dev/null 2>&1; then r=$(wslpath -u \"$r\"); elif command -v cygpath >/dev/null 2>&1; then r=$(cygpath -u \"$r\"); else d=$(printf %s \"$r\" | cut -c1 | tr A-Z a-z); rest=${r:2}; rest=${rest//\\\\//}; r=/mnt/$d$rest; fi;; esac; exec bash \"$r/hooks/guard-shell.sh\"' _ '${CURSOR_PLUGIN_ROOT}'",
+        "failClosed": true
+      }
     ],
     "afterFileEdit": [
-      { "command": "bash \"${CURSOR_PLUGIN_ROOT}/hooks/post-edit-lint.sh\"" }
+      {
+        "command": "bash -c 'r=$1; case $r in [A-Za-z]:*) if command -v wslpath >/dev/null 2>&1; then r=$(wslpath -u \"$r\"); elif command -v cygpath >/dev/null 2>&1; then r=$(cygpath -u \"$r\"); else d=$(printf %s \"$r\" | cut -c1 | tr A-Z a-z); rest=${r:2}; rest=${rest//\\\\//}; r=/mnt/$d$rest; fi;; esac; exec bash \"$r/hooks/post-edit-lint.sh\"' _ '${CURSOR_PLUGIN_ROOT}'"
+      }
     ]
   }
 }

@@ -84,7 +84,7 @@ $ErrorActionPreference = 'Stop'
 # Constants
 # ---------------------------------------------------------------------------
 
-$VERSION = '0.5.1'
+$VERSION = '0.5.2'
 $CURSOR_MODE_LABEL = 'Team Avatar (Cursor Plugin)'
 $PLUGIN_NAME = 'oh-my-cursor'
 

@@ -41,6 +41,10 @@ _Created by <a href="https://zeroclickdev.ai/">ZeroClickDev</a>_
 
 </div>
 
+> **v0.5.2 — WSL hook paths** (September 2026): on Windows, `${CURSOR_PLUGIN_ROOT}` is a
+> `C:\...` path. WSL bash treats backslashes as escapes, so the plugin converts it with
+> `wslpath` (or `/mnt/<drive>/...`) before running hook scripts.
+>
 > **v0.5.1 — Plugin hook paths** (September 2026): plugin `hooks/hooks.json` invokes scripts via
 > `${CURSOR_PLUGIN_ROOT}` so Cursor can find them after plugin load (cwd is often the workspace,
 > not the plugin directory). Project-scope `--project` still uses `.cursor/hooks/...`.
@@ -446,11 +450,12 @@ Two-tier swarm: **Coordinators** (Aang, Sokka, Katara, Appa) spawn **Workers** (
 
 System-level enforcement that doesn't rely on agents remembering to verify. Wired through
 Cursor's [hooks](https://cursor.com/docs/hooks) system. The plugin ships
-**`hooks/hooks.json`** with `${CURSOR_PLUGIN_ROOT}/hooks/...` so scripts resolve from the
-plugin install directory (local copy or marketplace cache), not the workspace cwd. A
-project-scope install writes **`.cursor/hooks.json`** with workspace-relative
-`.cursor/hooks/...` paths so [cloud agents](https://cursor.com/docs/hooks) can run the
-same guards.
+**`hooks/hooks.json`** with `${CURSOR_PLUGIN_ROOT}` so scripts resolve from the plugin
+install directory (local copy or marketplace cache), not the workspace cwd. On Windows
+WSL the Windows path is converted to `/mnt/<drive>/...` (via `wslpath`, else `cygpath`,
+else a `/mnt/c/...` fallback) so bash can open the file. A project-scope install writes
+**`.cursor/hooks.json`** with workspace-relative `.cursor/hooks/...` paths so
+[cloud agents](https://cursor.com/docs/hooks) can run the same guards.
 
 Each hook is a script that receives a JSON payload on stdin and (for `beforeShellExecution`)
 returns an allow/deny/ask decision. Commands are invoked as `bash <script>` so they do not
