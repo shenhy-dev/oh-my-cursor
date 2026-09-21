@@ -15,6 +15,16 @@ function readStdin() {
   }
 }
 
+function parsePayload(raw) {
+  const text = String(raw || '').replace(/^\uFEFF/, '').trim();
+  if (!text) return { ok: true, payload: {} };
+  try {
+    return { ok: true, payload: JSON.parse(text) };
+  } catch {
+    return { ok: false, payload: {} };
+  }
+}
+
 function emit(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
 }
@@ -75,15 +85,9 @@ function hold(reason) {
 }
 
 const raw = readStdin();
-let payload = {};
-let parseOk = true;
-if (raw.trim()) {
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    parseOk = false;
-  }
-}
+const parsed = parsePayload(raw);
+let payload = parsed.payload;
+let parseOk = parsed.ok;
 
 const command = typeof payload.command === 'string' ? payload.command : '';
 const cwd = typeof payload.cwd === 'string' ? payload.cwd : '';
@@ -97,7 +101,7 @@ if (process.env.OMC_HOOKS_DEBUG === '1') {
   }
 }
 
-if (raw.trim() && !parseOk) {
+if (!parseOk) {
   if (observe()) allow();
   ask('oh-my-cursor guard could not parse the shell command; review before running');
 }
@@ -159,8 +163,10 @@ const secretNeedles = [
   '/.docker/config.json',
   '/.config/gcloud/',
   '.aws/credentials',
+  'appdata/roaming/gcloud',
 ];
-if (secretNeedles.some((p) => command.includes(p))) {
+const secretHaystack = command.replace(/\\/g, '/').toLowerCase();
+if (secretNeedles.some((p) => secretHaystack.includes(p.toLowerCase()))) {
   hold('command accesses a credential/secret file');
 }
 

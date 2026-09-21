@@ -17,19 +17,33 @@ function readStdin() {
 
 function which(bin) {
   const cmd = process.platform === 'win32' ? 'where' : 'which';
-  const r = spawnSync(cmd, [bin], { encoding: 'utf8' });
-  return r.status === 0;
+  const names = process.platform === 'win32' ? [`${bin}.cmd`, `${bin}.exe`, bin] : [bin];
+  for (const name of names) {
+    const r = spawnSync(cmd, [name], { encoding: 'utf8' });
+    if (r.status === 0 && r.stdout && r.stdout.trim()) {
+      return r.stdout.split(/\r?\n/).map((s) => s.trim()).find(Boolean) || name;
+    }
+  }
+  return null;
 }
 
 function run(bin, args) {
-  spawnSync(bin, args, { stdio: 'inherit', encoding: 'utf8' });
+  const resolved = which(bin);
+  if (!resolved) return;
+  const opts = { stdio: 'inherit', encoding: 'utf8' };
+  if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved)) {
+    opts.shell = true;
+    opts.windowsHide = true;
+  }
+  spawnSync(resolved, args, opts);
 }
 
 let payload = {};
 const raw = readStdin();
-if (raw.trim()) {
+const text = String(raw || '').replace(/^\uFEFF/, '').trim();
+if (text) {
   try {
-    payload = JSON.parse(raw);
+    payload = JSON.parse(text);
   } catch {
     process.exit(0);
   }
@@ -52,14 +66,14 @@ const ext = path.extname(file).slice(1);
 
 try {
   if (ext === 'ts' || ext === 'tsx' || ext === 'js' || ext === 'jsx') {
-    if (which('npx')) run('npx', ['eslint', '--no-error-on-unmatched-pattern', file]);
+    run('npx', ['eslint', '--no-error-on-unmatched-pattern', file]);
   } else if (ext === 'py') {
     if (which('ruff')) run('ruff', ['check', file]);
-    else if (which('flake8')) run('flake8', [file]);
+    else run('flake8', [file]);
   } else if (ext === 'rs') {
-    if (which('cargo')) run('cargo', ['clippy', '--message-format=short']);
+    run('cargo', ['clippy', '--message-format=short']);
   } else if (ext === 'go') {
-    if (which('golangci-lint')) run('golangci-lint', ['run', file]);
+    run('golangci-lint', ['run', file]);
   }
 } catch {
   /* informational only */
