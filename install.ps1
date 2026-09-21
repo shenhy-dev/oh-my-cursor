@@ -91,8 +91,9 @@ $PLUGIN_NAME = 'oh-my-cursor'
 $AGENT_FILES = @('aang.md', 'sokka.md', 'katara.md', 'zuko.md', 'toph.md', 'appa.md', 'momo.md', 'iroh.md')
 $PROTOCOL_FILES = @('protocols/team-avatar.md')
 $COMMAND_FILES = @('plan.md', 'build.md', 'search.md', 'fix.md', 'tasks.md', 'scout.md', 'cactus-juice.md', 'doc.md', 'image.md')
-$HOOK_FILES = @('post-edit-lint.sh', 'pre-commit-check.sh', 'guard-shell.sh', 'hooks.json')
-$HOOK_SCRIPT_FILES = @('post-edit-lint.sh', 'pre-commit-check.sh', 'guard-shell.sh')
+$HOOK_FILES = @('post-edit-lint.js', 'pre-commit-check.js', 'guard-shell.js', 'hooks.json')
+$HOOK_SCRIPT_FILES = @('post-edit-lint.js', 'pre-commit-check.js', 'guard-shell.js')
+$LEGACY_HOOK_FILES = @('post-edit-lint.sh', 'pre-commit-check.sh', 'guard-shell.sh')
 $PLUGIN_MANIFEST_FILES = @('plugin.json', 'marketplace.json')
 $RULE_FILE = 'orchestrator.mdc'
 $RULE_FILE_DISABLED = 'orchestrator.mdc.disabled'
@@ -544,10 +545,10 @@ function Write-ProjectHooksJson {
   "version": 1,
   "hooks": {
     "beforeShellExecution": [
-      { "command": "bash .cursor/hooks/guard-shell.sh", "failClosed": true }
+      { "command": "node .cursor/hooks/guard-shell.js", "failClosed": true }
     ],
     "afterFileEdit": [
-      { "command": "bash .cursor/hooks/post-edit-lint.sh" }
+      { "command": "node .cursor/hooks/post-edit-lint.js" }
     ]
   }
 }
@@ -580,7 +581,7 @@ function Remove-LegacyUserInjection {
             $migrated++
         }
     }
-    foreach ($file in $HOOK_SCRIPT_FILES) {
+    foreach ($file in $LEGACY_HOOK_FILES) {
         if (Remove-PathIfPresent -Target (Join-Path $CursorDir "hooks/$file") -Label "hooks/${file}" -IsDryRun $IsDryRun) {
             $migrated++
         }
@@ -688,7 +689,7 @@ function Install-GitPreCommitHook {
 # (shell, git CLI, or Cursor's native git path). The beforeShellExecution guard only sees shell
 # `git commit`; this git-native hook covers commits that bypass the shell.
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-exec bash "$root/.cursor/hooks/pre-commit-check.sh"
+exec node "$root/.cursor/hooks/pre-commit-check.js"
 '@
     [IO.File]::WriteAllText($hook, ($body -replace "`r`n", "`n"))
     Write-Host "  [installed] git pre-commit hook ($hook)" -ForegroundColor Green
@@ -714,6 +715,9 @@ function Install-CursorPlugin {
     Install-FileSet -SrcDir (Join-Path $WorkDir 'agents') -DestDir (Join-Path $Dest 'agents') -Label 'protocols' -Files $PROTOCOL_FILES -IsForce $IsForce -IsDryRun $IsDryRun
     Install-FileSet -SrcDir (Join-Path $WorkDir 'commands') -DestDir (Join-Path $Dest 'commands') -Label 'commands' -Files $COMMAND_FILES -IsForce $IsForce -IsDryRun $IsDryRun
     Install-FileSet -SrcDir (Join-Path $WorkDir 'hooks') -DestDir (Join-Path $Dest 'hooks') -Label 'hooks' -Files $HOOK_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    foreach ($file in $LEGACY_HOOK_FILES) {
+        Remove-PathIfPresent -Target (Join-Path (Join-Path $Dest 'hooks') $file) -Label "hooks/${file}" -IsDryRun $IsDryRun | Out-Null
+    }
     Install-FileSet -SrcDir (Join-Path $WorkDir 'rules') -DestDir (Join-Path $Dest 'rules') -Label 'rules' -Files @($RULE_FILE) -IsForce $IsForce -IsDryRun $IsDryRun
 }
 
@@ -737,6 +741,9 @@ function Install-ToDir {
     Install-FileSet -SrcDir (Join-Path $WorkDir 'agents') -DestDir $agentsDir -Label 'protocols' -Files $PROTOCOL_FILES -IsForce $IsForce -IsDryRun $IsDryRun
     Install-FileSet -SrcDir (Join-Path $WorkDir 'commands') -DestDir $commandsDir -Label 'commands' -Files $COMMAND_FILES -IsForce $IsForce -IsDryRun $IsDryRun
     Install-FileSet -SrcDir (Join-Path $WorkDir 'hooks') -DestDir $hooksDir -Label 'hook scripts' -Files $HOOK_SCRIPT_FILES -IsForce $IsForce -IsDryRun $IsDryRun
+    foreach ($file in $LEGACY_HOOK_FILES) {
+        Remove-PathIfPresent -Target (Join-Path $hooksDir $file) -Label "hooks/${file}" -IsDryRun $IsDryRun | Out-Null
+    }
     Install-FileSet -SrcDir (Join-Path $WorkDir 'rules') -DestDir $rulesDir -Label 'rules' -Files @($RULE_FILE) -IsForce $IsForce -IsDryRun $IsDryRun
 
     if ($isProjectCursor) {
@@ -898,7 +905,7 @@ function Uninstall-Scattered {
     Write-Host ''
     Write-Host "Removing hooks from ${hooksDir}" -ForegroundColor White
     Write-Host ''
-    foreach ($file in ($HOOK_SCRIPT_FILES + @('hooks.json'))) {
+    foreach ($file in ($HOOK_SCRIPT_FILES + $LEGACY_HOOK_FILES + @('hooks.json'))) {
         $target = Join-Path $hooksDir $file
         if (Test-Path $target) {
             if ($IsDryRun) {

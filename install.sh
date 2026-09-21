@@ -10,7 +10,8 @@ PLUGIN_NAME="oh-my-cursor"
 AGENT_FILES=(aang.md sokka.md katara.md zuko.md toph.md appa.md momo.md iroh.md)
 PROTOCOL_FILES=(protocols/team-avatar.md)
 COMMAND_FILES=(plan.md build.md search.md fix.md tasks.md scout.md cactus-juice.md doc.md image.md)
-HOOK_FILES=(post-edit-lint.sh pre-commit-check.sh guard-shell.sh hooks.json)
+HOOK_FILES=(post-edit-lint.js pre-commit-check.js guard-shell.js hooks.json)
+LEGACY_HOOK_FILES=(post-edit-lint.sh pre-commit-check.sh guard-shell.sh)
 PLUGIN_MANIFEST_FILES=(plugin.json marketplace.json)
 RULE_FILE="orchestrator.mdc"
 SKILL_DIRS=(
@@ -500,10 +501,10 @@ write_project_hooks_json() {
   "version": 1,
   "hooks": {
     "beforeShellExecution": [
-      { "command": "bash .cursor/hooks/guard-shell.sh", "failClosed": true }
+      { "command": "node .cursor/hooks/guard-shell.js", "failClosed": true }
     ],
     "afterFileEdit": [
-      { "command": "bash .cursor/hooks/post-edit-lint.sh" }
+      { "command": "node .cursor/hooks/post-edit-lint.js" }
     ]
   }
 }
@@ -535,7 +536,7 @@ migrate_legacy_user_injection() {
     fi
   done
 
-  for file in post-edit-lint.sh pre-commit-check.sh guard-shell.sh; do
+  for file in "${LEGACY_HOOK_FILES[@]}"; do
     if remove_path "${cursor_dir}/hooks/${file}" "hooks/${file}"; then
       migrated=$((migrated + 1))
     fi
@@ -633,7 +634,7 @@ install_git_precommit_hook() {
 # (shell, git CLI, or Cursor's native git path). The beforeShellExecution guard only sees shell
 # `git commit`; this git-native hook covers commits that bypass the shell.
 root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-exec bash "$root/.cursor/hooks/pre-commit-check.sh"
+exec node "$root/.cursor/hooks/pre-commit-check.js"
 HOOK
   chmod +x "$hook"
   log "  ${GREEN}[installed]${RESET} git pre-commit hook (${hook})"
@@ -658,6 +659,9 @@ install_cursor_plugin() {
   install_file_set "${WORK_DIR}/agents" "${dest}/agents" "protocols" "${PROTOCOL_FILES[@]}"
   install_file_set "${WORK_DIR}/commands" "${dest}/commands" "commands" "${COMMAND_FILES[@]}"
   install_file_set "${WORK_DIR}/hooks" "${dest}/hooks" "hooks" "${HOOK_FILES[@]}"
+  for file in "${LEGACY_HOOK_FILES[@]}"; do
+    remove_path "${dest}/hooks/${file}" "hooks/${file}" || true
+  done
   install_file_set "${WORK_DIR}/rules" "${dest}/rules" "rules" "${RULE_FILE}"
 }
 
@@ -678,7 +682,10 @@ install_to_dir() {
   install_file_set "${WORK_DIR}/agents" "$agents_dir" "agents" "${AGENT_FILES[@]}"
   install_file_set "${WORK_DIR}/agents" "$agents_dir" "protocols" "${PROTOCOL_FILES[@]}"
   install_file_set "${WORK_DIR}/commands" "$commands_dir" "commands" "${COMMAND_FILES[@]}"
-  install_file_set "${WORK_DIR}/hooks" "$hooks_dir" "hook scripts" post-edit-lint.sh pre-commit-check.sh guard-shell.sh
+  install_file_set "${WORK_DIR}/hooks" "$hooks_dir" "hook scripts" post-edit-lint.js pre-commit-check.js guard-shell.js
+  for file in "${LEGACY_HOOK_FILES[@]}"; do
+    remove_path "${hooks_dir}/${file}" "hooks/${file}" || true
+  done
   install_file_set "${WORK_DIR}/rules" "$rules_dir" "rules" "${RULE_FILE}"
 
   if [ "$is_project_cursor" = true ]; then
@@ -806,7 +813,7 @@ uninstall_scattered() {
   log ""
   log "Removing hooks from ${BOLD}${hooks_dir}${RESET}"
   log ""
-  for file in post-edit-lint.sh pre-commit-check.sh guard-shell.sh hooks.json; do
+  for file in "${HOOK_FILES[@]}" "${LEGACY_HOOK_FILES[@]}"; do
     target="${hooks_dir}/${file}"
     if [ -f "$target" ]; then
       if [ "$DRY_RUN" = true ]; then

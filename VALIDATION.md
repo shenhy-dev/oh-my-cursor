@@ -148,7 +148,7 @@ In the Agent chat, have it create + `git add` + `git commit` a `.ts` file contai
 `as any`. Expect: **commit blocked** ("Command execution was blocked by a hook") and a
 `git commit` line in `.cursor/hooks/last-invocation.log`. Cleanup: `launchctl unsetenv OMC_HOOKS_DEBUG`.
 
-> **Observe mode:** set `OMC_HOOKS_OBSERVE=1` to run `guard-shell.sh` non-blocking — it logs
+> **Observe mode:** set `OMC_HOOKS_OBSERVE=1` to run `guard-shell.js` non-blocking — it logs
 > what it *would* deny without denying, so you can validate before trusting it to block.
 
 ---
@@ -201,7 +201,7 @@ proving the guard fired and the deny was honored.
 
 **All three layers PASS (2026-06-26):**
 - [x] `beforeShellExecution` guard — `as any` commit blocked; guard fired.
-- [x] `afterFileEdit` lint — agent edit logged an `edit` line → `post-edit-lint.sh` fired.
+- [x] `afterFileEdit` lint — agent edit logged an `edit` line → `post-edit-lint.js` fired.
 - [x] `permissions.json` auto-review — `git status` auto-ran while `cat ~/.ssh/config` was
       held for review (matches `block_instructions`).
 

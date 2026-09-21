@@ -11,11 +11,12 @@ All notable changes to oh-my-cursor are documented here. Format follows
 
 ## [0.5.2] — 2026-09-21
 
-### Fixed
-- **Windows WSL plugin hooks.** `${CURSOR_PLUGIN_ROOT}` on Windows is `C:\\Users\\...`.
-  Passing that to WSL `bash` eats backslashes (`C:Usersadmin...` → file not found).
-  Hook commands now pass the root as a single-quoted argument and convert it with
-  `wslpath -u` (Git Bash `cygpath`, else `/mnt/<drive>/...`) before `exec bash`.
+### Changed
+- **Plugin hooks are Node.js.** `hooks/hooks.json` runs
+  `node "${CURSOR_PLUGIN_ROOT}/hooks/{guard-shell,post-edit-lint}.js"` so Windows and
+  macOS share one implementation without bash/WSL. Project-scope `--project` writes
+  `node .cursor/hooks/...`. Git pre-commit calls `pre-commit-check.js`. Leftover
+  `hooks/*.sh` files are removed on install/uninstall.
 
 ## [0.5.1] — 2026-09-21
 
